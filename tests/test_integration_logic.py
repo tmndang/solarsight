@@ -290,3 +290,28 @@ def test_app_export_consistency():
     epa_fields = [k for k, v in meta["fields"].items() if v["provenance"] == "epa_historical"]
     assert all(k.startswith("epa_") for k in epa_fields)
     assert (g.fema_flood_data_status == "not_assessed").all() and g.fema_flood_overlap_pct.isna().all()
+
+
+@pytest.mark.skipif(not (ROOT / "data/app/candidates.geojson").exists(), reason="no app export")
+def test_app_export_numeric_fields_are_json_numbers():
+    """Regression: float columns containing NaN were once written as JSON strings."""
+    import collections
+    import json
+    d = gpd.read_parquet(ROOT / "data/processed/feasibility_sites.parquet")
+    feats = json.loads((ROOT / "data/app/candidates.geojson").read_text())["features"]
+    for col in feats[0]["properties"]:
+        if col in d and pd.api.types.is_numeric_dtype(d[col]) and not pd.api.types.is_bool_dtype(d[col]):
+            kinds = collections.Counter(type(f["properties"][col]).__name__ for f in feats)
+            assert set(kinds) <= {"float", "int", "NoneType"}, (col, kinds)
+            assert kinds.get("NoneType", 0) == int(d[col].isna().sum()), col  # null <=> NaN, nothing else
+
+
+@pytest.mark.skipif(not (ROOT / "data/app/fixtures/scenario_expected.json").exists(), reason="no fixtures")
+def test_scenario_fixture_matches_engine_baseline():
+    import json
+    cases = json.loads((ROOT / "data/app/fixtures/scenario_expected.json").read_text())["cases"]
+    assert len(cases) == 3 * 4 * 3 * 2
+    c = next(x for x in cases if x["scenario"] == "brownfields_baseline" and x["target_mw_ac"] == 10
+             and x["slope_threshold_pct"] == 10 and x["exclude_nwi"])
+    assert c["funnel"] == {"universe": 434, "baseline": 361, "size_feasible": 75, "screen_eligible": 75, "frontier": 2}
+    assert sorted(k for k, v in c["ranks"].items() if v == 1) == ["DEQ-02005-98-007", "DEQ-18035-14-083"]

@@ -17,6 +17,7 @@ availability.
 * Audit (validated / assumed / missing / not represented): [`docs/FOUNDATION_AUDIT.md`](docs/FOUNDATION_AUDIT.md)
 * Method: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) · Sources: [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
 * Generated analysis: [`docs/analysis/foundation_report.md`](docs/analysis/foundation_report.md)
+* Frontend spec (frozen): [`docs/UI_SPEC.md`](docs/UI_SPEC.md) · TS-port golden cases: `data/app/fixtures/scenario_expected.json` (`scripts/export_scenario_fixtures.py`)
 
 ## Outputs
 

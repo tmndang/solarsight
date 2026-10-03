@@ -32,7 +32,8 @@ def main():
     for c in cols:
         if pd.api.types.is_float_dtype(g[c]):
             g[c] = g[c].round(4)
-    g = g.replace({np.nan: None})
+    # NaN in float columns is written as JSON null by GDAL; do NOT replace with None (that turns the
+    # column into object dtype and GDAL then writes every value as a string).
     g.to_file(APP / "candidates.geojson", driver="GeoJSON", COORDINATE_PRECISION=6)
     meta = {
         "dataset_version": pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d"),
