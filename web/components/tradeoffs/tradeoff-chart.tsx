@@ -146,11 +146,11 @@ export function TradeoffChart() {
         </ScatterChart>
       </ResponsiveContainer>
       <p className="pointer-events-none absolute right-8 top-1 text-[10px] text-text-muted">← closer to transmission · ↓ flatter usable land</p>
-      <table className="sr-only">
+      <div className="sr-only"><table>
         <caption>Feasible sites plotted by distance to mapped transmission and mean slope of usable land</caption>
         <thead><tr><th>Site</th><th>Tradeoff state</th><th>Distance (km)</th><th>Usable-land slope (°)</th></tr></thead>
         <tbody>{base.points.map((p) => <tr key={p.id}><td>{p.name}</td><td>{STATE_LABEL[p.state]}</td><td>{p.x.toFixed(2)}</td><td>{p.y.toFixed(2)}</td></tr>)}</tbody>
-      </table>
+      </table></div>
     </div>
   );
 }

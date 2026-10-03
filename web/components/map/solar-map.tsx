@@ -117,15 +117,20 @@ export default function SolarMap() {
 
   // ---- camera: move only for off-map selections (list/chart), never for map clicks ----
   useEffect(() => {
-    if (!flyToken || !selectedId) return;
-    const m = mapRef.current?.getMap();
+    if (!flyToken || !selectedId || !mapObj) return;
+    const m = mapObj;
     const p = byId.get(selectedId);
     if (!m || !p) return;
     const ll: [number, number] = [p.longitude, p.latitude];
-    if (m.getBounds().contains(ll) && m.getZoom() >= 7) return;
-    const opts = { center: ll, zoom: Math.max(m.getZoom(), 9) };
+    // below 1280 px the site panel overlays the map (right edge; bottom below 1024) — keep the site clear of it
+    const c = m.getContainer(), w = c.clientWidth, h = c.clientHeight, vw = window.innerWidth;
+    const padding = { top: 40, left: 40, right: vw < 1024 ? 40 : vw < 1280 ? Math.min(420, w / 2) : 40, bottom: vw < 1024 ? Math.min(h * 0.6, h - 80) : 40 };
+    const pt = m.project(ll);
+    const clear = pt.x >= padding.left && pt.x <= w - padding.right && pt.y >= padding.top && pt.y <= h - padding.bottom;
+    if (clear && m.getZoom() >= 7) return;
+    const opts = { center: ll, zoom: Math.max(m.getZoom(), 9), padding };
     if (prefersReducedMotion()) m.jumpTo(opts); else m.flyTo({ ...opts, duration: 700 });
-  }, [flyToken]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [flyToken, mapObj]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- interaction ----------------------------------------------------------------
   const pick = (e: MapLayerMouseEvent): string | null => {

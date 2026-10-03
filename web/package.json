@@ -10,7 +10,8 @@
     "start": "npx --yes serve out -l 3000",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "node tests/e2e/demo.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",

@@ -11,17 +11,18 @@ export function Logo() {
   );
 }
 
-export function AppHeader({ summary, onMethodology }: { summary?: React.ReactNode; onMethodology?: () => void }) {
+export function AppHeader({ summary, onMethodology, extra }: { summary?: React.ReactNode; onMethodology?: () => void; extra?: React.ReactNode }) {
   return (
-    <header className="flex items-center gap-4 border-b border-border bg-surface px-4">
+    <header className="flex min-w-0 items-center gap-4 border-b border-border bg-surface px-4">
       <div className="flex items-center gap-2">
         <Logo />
         <span className="text-[15px] font-semibold tracking-[0.01em] text-text-primary">SolarSight</span>
         <span className="hidden text-xs text-text-muted md:inline">NC brownfield solar screening</span>
       </div>
       <div className="min-w-0 flex-1">{summary}</div>
+      {extra}
       <Button variant="ghost" onClick={onMethodology} aria-label="Open methodology and data sources">
-        <BookOpen size={15} aria-hidden /> Methodology
+        <BookOpen size={15} aria-hidden /> <span className="max-[640px]:sr-only">Methodology</span>
       </Button>
     </header>
   );

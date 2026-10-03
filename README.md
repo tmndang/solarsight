@@ -19,6 +19,23 @@ availability.
 * Generated analysis: [`docs/analysis/foundation_report.md`](docs/analysis/foundation_report.md)
 * Frontend spec (frozen): [`docs/UI_SPEC.md`](docs/UI_SPEC.md) · TS-port golden cases: `data/app/fixtures/scenario_expected.json` (`scripts/export_scenario_fixtures.py`)
 
+## Run the app
+
+The web app (`web/`) is a static Next.js export. All candidate data, scenario logic and Pareto
+analysis run in the browser from `data/app/`. Only the basemap tiles come from the network, and
+local county outlines replace them when that fails.
+
+```bash
+cd web
+npm install
+npm run build && npm start      # production build served at http://localhost:3000
+# or: npm run dev               # development server
+npm test                        # unit + golden-parity tests (Vitest)
+npm run e2e                     # demo-path browser test against a running build (E2E_URL, default :3000)
+```
+
+See [`web/README.md`](web/README.md) for structure, deep links and deviations from the UI spec.
+
 ## Outputs
 
 | File | What |

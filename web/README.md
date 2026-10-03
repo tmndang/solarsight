@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SolarSight web app
 
-## Getting Started
-
-First, run the development server:
+This is the implementation of [`docs/UI_SPEC.md`](../docs/UI_SPEC.md). It is a static Next.js export with no backend.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run build && npm start   # http://localhost:3000 (serves out/)
+npm run dev                  # development
+npm test                     # Vitest: engine, explanations, formatting, 72 golden-parity cases
+npm run typecheck && npm run lint
+npm run e2e                  # browser demo test; needs a running build (E2E_URL=http://localhost:3000)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`predev`/`prebuild` run `scripts/sync-data.mjs`. It copies `../data/app/{candidates.geojson,meta.json,context.geojson}`
+into `public/data/` and copies the MapLibre worker into `public/maplibre/`. Both directories are generated and git-ignored.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Path | Role |
+|---|---|
+| `lib/data` | Zod schema (rejects non-numeric metrics, duplicate IDs), loading, memoised scenario result |
+| `lib/scenario`, `lib/pareto` | Port of `src/analysis/scenario.py` and `src/analysis/pareto.py`, checked against `data/app/fixtures/scenario_expected.json` |
+| `lib/explanations`, `lib/formatting` | Dominance sentences from real values; unit formatting (missing values are never shown as 0) |
+| `store/app-store.ts` | Zustand: scenario, selection, hover (map / chart / list), compare, panels |
+| `components/` | `controls` (rail, funnel), `map`, `site`, `tradeoffs`, `compare`, `methodology`, `shell`, `ui` (Radix wrappers) |
 
-## Learn More
+## Using the app
 
-To learn more about Next.js, take a look at the following resources:
+* Deep links: `?mw=20&site=DEQ-02005-98-007`.
+* Keyboard: `[` / `]` change the project size, `c` adds or removes the selected site in Compare, and `Esc` closes the panel or clears the selection.
+* Layout: three columns at 1280 px and wider. Between 1024 and 1279 px the site panel overlays the map. Below 1024 px a "Setup" sheet and a bottom site overlay are used.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Deviations from UI_SPEC
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+* Radix primitives are wrapped by hand in `components/ui/primitives.tsx` instead of being generated with the shadcn CLI, because the registry was unreachable from the build environment. The tokens and behaviour are the same.
+* Geist is loaded from the `geist` npm package instead of Google Fonts, so the app works offline.
+* The MapLibre web worker is shipped as a static file and loaded with `setWorkerUrl`, because bundler resolution of it failed in the static export.
+* Frontier sites are drawn as a diamond symbol on the map, matching the chart glyph. Map labels reuse the font of the loaded basemap style, and are omitted on the local fallback basemap.
+* The fallback basemap is `data/app/context.geojson` (NC county outlines). The app switches to it after a style error or a 6 s timeout.
+* Per the implementation directive:
+  * no line connects Pareto points;
+  * the funnel stage reads "Pass baseline land screen";
+  * the UI shows no rank numbers;
+  * the x-axis has no 0.1 km tick.
+* Data fixes made while building the app:
+  * `export_app_data.py` now exports numbers at full precision, because 4-dp rounding created false ties that broke the Pareto tie-break;
+  * the fixture generator no longer writes NaN.
