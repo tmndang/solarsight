@@ -1,14 +1,18 @@
-"""Per-site terrain statistics and approximate usable area.
+"""Per-site terrain statistics, environmental overlaps and usable area (10 m grid).
 
 For each candidate polygon:
   1. read the cached 3DEP clip (EPSG:4269, ~1/3 arc-second)
-  2. reproject to EPSG:32119 (NAD83 / North Carolina, metres) on a 10 m grid, bilinear
+  2. reproject to EPSG:32119 (NAD83 / North Carolina, metres) at 10 m, bilinear
   3. Horn slope in percent -> degrees (never computed on lat/lon degrees)
-  4. rasterise the candidate polygon (pixel-centre rule) and the exclusion layers
-     (OSM/Overture water polygons, OSM wetland polygons) on the same grid
-  5. aggregate: mean / p90 slope (deg) over all valid candidate pixels,
-     share of pixels above slope thresholds, water / wetland overlap,
-     usable area = candidate pixels that are not water, not wetland and below the slope threshold
+  4. rasterise on the same grid (pixel-centre rule): the candidate polygon, building footprints
+     (Overture), current surface water (OSM/Overture base/water), USFWS NWI polygons split into
+     vegetated-wetland classes and water classes, and OSM natural=wetland (context only)
+  5. aggregate:
+       whole-site slope: mean / median / p90, share above 5/10/15/25 %
+       buildable base   = site - buildings - surface water - NWI vegetated wetland
+       usable_acres_slope{T} = buildable base pixels with slope <= T %   (T in 5, 10, 15)
+       usable_mean_slope_deg_slope{T}, terrain_loss_pct_slope{T} = 1 - usable/buildable base
+       overlaps (acres and % of site) for every layer, each with its own explicit source name
 
 Output: data/processed/terrain.parquet (one row per site_id)
 """
@@ -20,25 +24,30 @@ import pandas as pd
 import rasterio
 from rasterio.features import rasterize
 from rasterio.warp import reproject, Resampling, calculate_default_transform
+from shapely.geometry import box
 
 from _common import RAW, PROCESSED, METRIC_CRS
-from src.analysis.assumptions import ASSUMPTIONS
+from ingest_authoritative import read_nwi
 from src.analysis.terrain import horn_slope_pct, pct_to_deg
 
 RES = 10.0
 SQM_PER_ACRE = 4046.8564224
-THRESH = ASSUMPTIONS["slope_exclusion_sensitivity_pct"]
+THRESH = [5, 10, 15]
+EXTREME = 25  # % slope; used only to test terrain formulations B/C
+NWI_VEGETATED = {"Freshwater Forested/Shrub Wetland", "Freshwater Emergent Wetland", "Estuarine and Marine Wetland"}
+NWI_WATER = {"Riverine", "Freshwater Pond", "Lake", "Estuarine and Marine Deepwater"}
 _LAYERS = {}
+_TMP = PROCESSED.parent / "interim"
 
 
 def _init():
-    _LAYERS["water"] = gpd.read_parquet(PROCESSED / "_water_near_candidates.parquet")
-    _LAYERS["wetland"] = gpd.read_parquet(PROCESSED / "_wetland_near_candidates.parquet")
+    for k in ("water", "osm_wetland", "nwi_veg", "nwi_water", "nwi_other", "buildings"):
+        _LAYERS[k] = gpd.read_parquet(_TMP / f"_terrain_{k}.parquet")
 
 
-def _burn(layer, geom_bbox, shape, transform):
+def _burn(layer, bbox, shape, transform):
     lyr = _LAYERS[layer]
-    hits = lyr.iloc[lyr.sindex.query(geom_bbox, predicate="intersects")]
+    hits = lyr.iloc[lyr.sindex.query(bbox, predicate="intersects")]
     if hits.empty:
         return np.zeros(shape, bool)
     return rasterize(((g, 1) for g in hits.geometry), out_shape=shape, transform=transform,
@@ -46,7 +55,7 @@ def _burn(layer, geom_bbox, shape, transform):
 
 
 def site_terrain(args):
-    site_id, geom = args  # geom in METRIC_CRS
+    site_id, geom = args
     with rasterio.open(RAW / "dem" / f"{site_id}.tif") as src:
         dem = src.read(1).astype("float64")
         dem[dem == src.nodata] = np.nan
@@ -55,57 +64,73 @@ def site_terrain(args):
         dst = np.full((h, w), np.nan)
         reproject(dem, dst, src_transform=src.transform, src_crs=src.crs, dst_transform=transform,
                   dst_crs=METRIC_CRS, resampling=Resampling.bilinear, src_nodata=np.nan, dst_nodata=np.nan)
-    slope_pct = horn_slope_pct(dst, RES, RES)
+    slope = horn_slope_pct(dst, RES, RES)
     site = rasterize([(geom, 1)], out_shape=dst.shape, transform=transform, fill=0, dtype="uint8").astype(bool)
-    valid = site & np.isfinite(slope_pct)
+    valid = site & np.isfinite(slope)
     n_site, n_valid = int(site.sum()), int(valid.sum())
-    from shapely.geometry import box
     bb = box(*geom.bounds)
-    water = _burn("water", bb, dst.shape, transform) & site
-    wet = _burn("wetland", bb, dst.shape, transform) & site
+    m = {k: _burn(k, bb, dst.shape, transform) & site
+         for k in ("water", "osm_wetland", "nwi_veg", "nwi_water", "nwi_other", "buildings")}
     px_ac = RES * RES / SQM_PER_ACRE
-    s = slope_pct[valid]
-    rec = {
-        "site_id": site_id,
-        "dem_pixels": n_site,
-        "dem_valid_frac": n_valid / n_site if n_site else np.nan,
-        "mean_slope_deg": float(pct_to_deg(s).mean()) if n_valid else np.nan,
-        "p90_slope_deg": float(np.percentile(pct_to_deg(s), 90)) if n_valid else np.nan,
-        "median_slope_deg": float(np.median(pct_to_deg(s))) if n_valid else np.nan,
-        "elev_min_m": float(np.nanmin(dst[site])) if n_valid else np.nan,
-        "elev_max_m": float(np.nanmax(dst[site])) if n_valid else np.nan,
-        "water_overlap_pct": 100 * water.sum() / n_site if n_site else np.nan,
-        "osm_wetland_overlap_pct": 100 * wet.sum() / n_site if n_site else np.nan,
-        "osm_wetland_overlap_acres": wet.sum() * px_ac,
-        "raster_area_acres": n_site * px_ac,
-    }
-    base_ok = valid & ~water & ~wet
+    s = slope[valid]
+    deg = pct_to_deg(s)
+    rec = {"site_id": site_id, "dem_pixels": n_site, "raster_area_acres": n_site * px_ac,
+           "dem_valid_frac": n_valid / n_site if n_site else np.nan}
+    if n_valid:
+        rec.update(mean_slope_deg=float(deg.mean()), median_slope_deg=float(np.median(deg)),
+                   p90_slope_deg=float(np.percentile(deg, 90)),
+                   elev_min_m=float(np.nanmin(dst[valid])), elev_max_m=float(np.nanmax(dst[valid])))
+        for t in THRESH + [EXTREME]:
+            rec[f"steep_gt{t}pct_share"] = float((s > t).mean())
+    for k, name in [("water", "surface_water"), ("osm_wetland", "osm_mapped_wetland"),
+                    ("nwi_veg", "nwi_wetland"), ("nwi_water", "nwi_water"), ("nwi_other", "nwi_other"),
+                    ("buildings", "building")]:
+        rec[f"{name}_overlap_acres"] = m[k].sum() * px_ac
+        rec[f"{name}_overlap_pct"] = 100 * m[k].sum() / n_site if n_site else np.nan
+    base = valid & ~m["buildings"] & ~m["water"] & ~m["nwi_veg"]
+    rec["buildable_base_acres"] = base.sum() * px_ac
+    base_noext = base & (slope <= EXTREME)
+    rec[f"mean_slope_deg_lt{EXTREME}pct_base"] = float(pct_to_deg(slope[base_noext]).mean()) if base_noext.any() else np.nan
+    rec[f"steep_gt10pct_share_of_lt{EXTREME}pct_base"] = float((slope[base_noext] > 10).mean()) if base_noext.any() else np.nan
+    rec[f"usable_acres_lt{EXTREME}pct"] = base_noext.sum() * px_ac
     for t in THRESH:
-        rec[f"steep_gt{int(t)}pct_share"] = float((s > t).mean()) if n_valid else np.nan
-        rec[f"usable_acres_slope{int(t)}"] = (base_ok & (slope_pct <= t)).sum() * px_ac
-    # usable-area pixels' own slope (the slope of the land you would actually build on)
-    t0 = ASSUMPTIONS["slope_exclusion_pct"]
-    ub = base_ok & (slope_pct <= t0)
-    rec["usable_mean_slope_deg"] = float(pct_to_deg(slope_pct[ub]).mean()) if ub.any() else np.nan
+        u = base & (slope <= t)
+        rec[f"usable_acres_slope{t}"] = u.sum() * px_ac
+        rec[f"usable_mean_slope_deg_slope{t}"] = float(pct_to_deg(slope[u]).mean()) if u.any() else np.nan
+        rec[f"terrain_loss_pct_slope{t}"] = 100 * (1 - u.sum() / base.sum()) if base.any() else np.nan
+        # scenario variant: NWI wetlands NOT removed (switchable assumption)
+        rec[f"usable_acres_slope{t}_nwi_not_excluded"] = (valid & ~m["buildings"] & ~m["water"]
+                                                          & (slope <= t)).sum() * px_ac
     return rec
 
 
 def main():
     c = gpd.read_parquet(PROCESSED / "candidates.parquet").to_crs(METRIC_CRS)
     hull = c.buffer(50).union_all()
-    for name, f in [("water", "overture_water.parquet"), ("wetland", "overture_land_wetland.parquet")]:
-        lyr = gpd.read_parquet(RAW / f).to_crs(METRIC_CRS)
+    layers = {
+        "water": gpd.read_parquet(RAW / "overture_water.parquet"),
+        "osm_wetland": gpd.read_parquet(RAW / "overture_land_wetland.parquet"),
+        "buildings": gpd.read_parquet(RAW / "overture_buildings_candidates.parquet"),
+    }
+    nwi = read_nwi(gpd.GeoSeries([hull], crs=METRIC_CRS).to_crs("EPSG:4326").iloc[0])
+    print("NWI polygons intersecting candidate hull:", len(nwi), nwi.crs)
+    layers["nwi_veg"] = nwi[nwi.WETLAND_TYPE.isin(NWI_VEGETATED)]
+    layers["nwi_water"] = nwi[nwi.WETLAND_TYPE.isin(NWI_WATER)]
+    layers["nwi_other"] = nwi[~nwi.WETLAND_TYPE.isin(NWI_VEGETATED | NWI_WATER)]
+    for k, lyr in layers.items():
+        lyr = lyr.to_crs(METRIC_CRS)
+        lyr = lyr[lyr.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
         lyr = lyr.iloc[lyr.sindex.query(hull, predicate="intersects")]
-        lyr[["id", "class", "geometry"]].to_parquet(PROCESSED / f"_{name}_near_candidates.parquet")
-        print(name, "features near candidates:", len(lyr))
-    jobs = list(zip(c.site_id, c.geometry))
+        lyr[["geometry"]].to_parquet(_TMP / f"_terrain_{k}.parquet")
+        print(k, "features near candidates:", len(lyr))
     with Pool(8, initializer=_init) as p:
-        rows = p.map(site_terrain, jobs, chunksize=4)
+        rows = p.map(site_terrain, list(zip(c.site_id, c.geometry)), chunksize=4)
     df = pd.DataFrame(rows)
     df["slope_source"] = "USGS 3DEP 1/3 arc-second DEM (current), reprojected to EPSG:32119 @10 m, Horn slope"
+    df["nwi_source"] = "USFWS National Wetlands Inventory, NC state geodatabase (manual download), NC_Wetlands layer"
     df.to_parquet(PROCESSED / "terrain.parquet", index=False)
-    for f in ("_water_near_candidates.parquet", "_wetland_near_candidates.parquet"):
-        (PROCESSED / f).unlink()
+    for f in _TMP.glob("_terrain_*.parquet"):
+        f.unlink()
     print(df.describe().T.round(2).to_string())
 
 

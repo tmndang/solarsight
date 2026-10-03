@@ -51,12 +51,20 @@ def _as_objectives(objs: Iterable) -> list[Objective]:
     return out
 
 
-def dominance_matrix(values: np.ndarray) -> np.ndarray:
+def dominance_matrix(values: np.ndarray, tol=None) -> np.ndarray:
     """values: (n, k) array where larger is better on every column.
-    Returns D (n, n) bool with D[i, j] True iff i dominates j."""
+    Returns D (n, n) bool with D[i, j] True iff i dominates j.
+
+    `tol` (length-k, raw units, >= 0) sets a practical-significance tolerance per objective:
+    i dominates j iff i is not worse than j by more than tol on every objective AND better than j
+    by more than tol on at least one. tol = 0 (default) is classical Pareto dominance."""
     v = np.asarray(values, dtype=float)
-    ge = (v[:, None, :] >= v[None, :, :]).all(axis=2)
-    gt = (v[:, None, :] > v[None, :, :]).any(axis=2)
+    t = np.zeros(v.shape[1]) if tol is None else np.asarray(tol, dtype=float)
+    if (t < 0).any():
+        raise ValueError("tolerances must be >= 0")
+    diff = v[:, None, :] - v[None, :, :]
+    ge = (diff >= -t).all(axis=2)
+    gt = (diff > t).any(axis=2)
     return ge & gt
 
 
@@ -67,6 +75,7 @@ class ParetoResult:
     id_col: str
     _dom: np.ndarray               # dominance matrix over analysed rows
     _ids: np.ndarray               # ids of analysed rows (order of _dom)
+    tolerances: dict | None = None  # practical-significance tolerances used (raw units)
 
     @property
     def frontier(self) -> pd.DataFrame:
@@ -109,16 +118,21 @@ class ParetoResult:
             c = cmp[o.name]
             lab = labels.get(o.name, o.name)
             f = fmt.get(o.name, "{:,.2f}")
-            if c["a_is"] == "better":
+            tol = float((self.tolerances or {}).get(o.name, 0.0))
+            if c["a_is"] == "better" and abs(c["diff"]) > tol:
                 word = "higher" if o.direction == MAXIMIZE else "lower"
                 parts.append(f"{word} {lab} ({f.format(c['a'])} vs {f.format(c['b'])})")
-            else:
+            elif c["a_is"] == "equal":
                 parts.append(f"equal {lab} ({f.format(c['a'])})")
+            else:
+                parts.append(f"comparable {lab} ({f.format(c['a'])} vs {f.format(c['b'])}, "
+                             f"difference within the {tol:g} tolerance)")
         return f"{b} is dominated by {a}: " + ", ".join(parts) + "."
 
 
 def pareto_analysis(data: pd.DataFrame, objectives: Sequence, id_col: str = "id",
-                    eligible: pd.Series | np.ndarray | None = None) -> ParetoResult:
+                    eligible: pd.Series | np.ndarray | None = None,
+                    tolerances: dict | None = None) -> ParetoResult:
     """Classify every row as nondominated / dominated / filtered / missing.
 
     Output table columns:
@@ -142,7 +156,8 @@ def pareto_analysis(data: pd.DataFrame, objectives: Sequence, id_col: str = "id"
     status = np.where(~elig, "filtered", np.where(missing, "missing", "dominated")).astype(object)
     idx = np.flatnonzero(analysed)
     signed = vals[idx] * np.array([o.sign for o in objs])
-    D = dominance_matrix(signed)
+    tol = [float((tolerances or {}).get(o.name, 0.0)) for o in objs]
+    D = dominance_matrix(signed, tol)
     n_dom_by = D.sum(axis=0)
     nd = n_dom_by == 0
     status[idx[nd]] = "nondominated"
@@ -181,7 +196,8 @@ def pareto_analysis(data: pd.DataFrame, objectives: Sequence, id_col: str = "id"
         col = df[o.name].to_numpy(dtype=float)
         t[f"diff_vs_dominator__{o.name}"] = [
             col[pos[e]] - col[i] if e is not None else np.nan for i, e in enumerate(ex)]
-    return ParetoResult(table=t, objectives=objs, id_col=id_col, _dom=D, _ids=ids[idx])
+    return ParetoResult(table=t, objectives=objs, id_col=id_col, _dom=D, _ids=ids[idx],
+                        tolerances=dict(tolerances or {}))
 
 
 def tradeoff_ladder(frontier: pd.DataFrame, x: Objective, y: Objective) -> pd.DataFrame:

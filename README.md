@@ -1,42 +1,56 @@
-# SolarSight — feasibility spike
+# SolarSight
 
-Geospatial screening of **previously disturbed land in North Carolina** (landfills, brownfields,
-quarries) for solar, using **Pareto tradeoffs** instead of a weighted suitability score.
+A transparent decision layer on top of EPA RE-Powering for **North Carolina brownfields**. For a
+solar project of a stated size (MW AC), SolarSight:
 
-This repository currently contains the *data-feasibility phase* only: real data, the processing
-pipeline, a reusable Pareto module, and the go/no-go analysis. No frontend yet.
+1. combines current NC DEQ Brownfields project boundaries with EPA RE-Powering screening attributes;
+2. adds USGS 3DEP terrain analysis, USFWS NWI wetland overlap and current mapped-transmission
+   proximity;
+3. removes sites that cannot host the project;
+4. shows the Pareto tradeoffs (transmission proximity vs terrain) among the rest.
 
-* Decision and findings: [`docs/DATA_FEASIBILITY.md`](docs/DATA_FEASIBILITY.md)
-* Sources tested: [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
-* Method: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md)
-* Generated analysis: [`docs/analysis/pareto_report.md`](docs/analysis/pareto_report.md)
+There is no weighted suitability score. SolarSight is a screening tool: it says nothing about
+interconnection capacity, permitting, wetland jurisdiction, flood risk (not yet assessed) or site
+availability.
 
-## Output
+* Decision & frozen spec: [`docs/DATA_FEASIBILITY.md`](docs/DATA_FEASIBILITY.md)
+* Audit (validated / assumed / missing / not represented): [`docs/FOUNDATION_AUDIT.md`](docs/FOUNDATION_AUDIT.md)
+* Method: [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) · Sources: [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md)
+* Generated analysis: [`docs/analysis/foundation_report.md`](docs/analysis/foundation_report.md)
 
-`data/processed/feasibility_sites.parquet` — GeoParquet (EPSG:4326), one row per real candidate
-polygon with metrics and provenance. `data/processed/pareto_results.parquet` — per objective-set
-model, every site's Pareto status/rank/example dominator. These are committed so the app can run
-offline.
+## Outputs
+
+| File | What |
+|---|---|
+| `data/app/candidates.geojson`, `data/app/meta.json` | frozen offline app dataset (662 candidates, field dictionary, assumptions, warnings) |
+| `data/processed/feasibility_sites.parquet` | canonical candidate table (GeoParquet, EPSG:4326) |
+| `data/processed/deq_epa_match.parquet` | all 1,363 DEQ projects with EPA match method and confidence |
+| `data/processed/candidates.parquet`, `terrain.parquet`, `grid_proxy_validation.parquet` | intermediates |
+
+Scenario results (feasibility, Pareto) are computed per scenario (`src/analysis/scenario.py`).
+They are not stored in the canonical table.
 
 ## Reproduce
+
+Raw inputs: the manually downloaded NC DEQ, EPA RE-Powering (GDB + `DataRecords.csv`) and NWI
+geodatabases in `data/raw/` (Git LFS: run `git lfs pull`), plus public S3 downloads.
 
 ```bash
 python -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 cd scripts
-python download_overture.py all          # OSM-derived layers from Overture S3 (~400 MB raw)
-python preprocess_candidates.py          # -> data/processed/candidates.parquet
-python download_elevation.py             # 3DEP 1/3" windows per site (24 MB)
-python compute_terrain.py                # -> data/processed/terrain.parquet
-python download_solar_resource.py meta   # NSRDB NC pixel table
-python download_solar_resource.py sites  # NSRDB TMY 8760 h per needed pixel (~15-30 min)
-python download_eia.py                   # EIA-860/923 NC PV (validation) via PUDL
-python compute_metrics.py                # -> data/processed/feasibility_sites.parquet
-python analyze_pareto.py                 # -> pareto_results.parquet, docs/analysis/*
+python ingest_authoritative.py           # DEQ + EPA NC -> data/interim
+python download_overture.py all          # OSM-derived layers (Overture S3)
+python download_buildings.py             # building footprints touching candidates (~15 min)
+python preprocess_candidates.py          # reconcile, match, status -> candidates.parquet
+python download_elevation.py             # 3DEP windows
+python compute_terrain.py                # slope, usable area, NWI/water/building overlaps
+python download_solar_resource.py meta && python download_solar_resource.py sites   # NSRDB cache
+python download_eia.py                   # validation only
+python compute_metrics.py                # -> feasibility_sites.parquet
+python export_app_data.py                # -> data/app/
+python analyze_foundation.py             # validation report (optional)
 cd .. && python -m pytest -q
 ```
 
-All downloads are public, anonymous S3 reads (no API keys). Only `compute_metrics.py` onward is
-needed to rebuild outputs once `data/raw/` is cached.
-
-Data © OpenStreetMap contributors (ODbL) via Overture Maps; USGS 3DEP; NREL NSRDB; EIA via
-Catalyst Cooperative PUDL (CC-BY-4.0).
+Data: © OpenStreetMap contributors (ODbL) via Overture Maps; NC DEQ; US EPA; USFWS NWI; USGS 3DEP;
+NREL NSRDB; EIA via Catalyst Cooperative PUDL (CC-BY-4.0).

@@ -1,124 +1,79 @@
-# Data sources — tested in the feasibility spike
+# Data sources
 
-Tested on 2026-10-03 from a cloud container whose egress policy **blocked most `.gov` web hosts**
-(epa.gov, fws.gov, fema.gov, nrel.gov / developer.nrel.gov, eia.gov, nconemap.gov, census.gov,
-usgs.gov web pages, `*.arcgis.com`, data.gov), plus openstreetmap.org/Overpass and Geofabrik.
-Reachable: AWS S3 public buckets, GitHub, PyPI. Every source below was **actually loaded**
-unless marked *not reachable*. Hosts marked *not reachable* were not judged on quality; we
-simply could not test them here and they need re-testing from an unrestricted network.
+Roles: **AUTHORITATIVE** (defines candidates or a frozen metric), **EPA BASELINE** (historical
+screening values shown as such), **DERIVED INPUT** (used to compute a SolarSight metric),
+**CONTEXT** (shown only), **VALIDATION** (checks only, not needed by the app), **GAP**.
 
-Status key: **USE** = recommended for the app, **VALIDATION** = used for checking only,
-**CONTEXT** = shown but not optimised, **BLOCKED** = not reachable from this environment.
+Raw files under `data/raw/` are never edited. The manually downloaded datasets are tracked with Git LFS.
+
+| # | Dataset | Provider | Role | Production dependency? |
+|---|---|---|---|---|
+| 1 | NC Brownfields Program project boundaries | NC DEQ | AUTHORITATIVE candidates (baseline scenario) | yes |
+| 2 | RE-Powering Mapper screened sites (GDB + attribute-table CSV) | US EPA | EPA BASELINE + DEQ cross-reference + landfill permit evidence | yes |
+| 3 | National Wetlands Inventory, NC | USFWS | DERIVED INPUT (NWI overlap, usable-area exclusion) | yes |
+| 4 | 3DEP 1/3 arc-second DEM | USGS | DERIVED INPUT (terrain, usable area) | yes |
+| 5 | Overture Maps `base/infrastructure` (OSM power) | OSM via Overture | DERIVED INPUT (current transmission distance) | yes |
+| 6 | Overture Maps `buildings` | OSM/ML footprints via Overture | DERIVED INPUT (built-out flag, usable area) | yes |
+| 7 | Overture Maps `base/water` | OSM via Overture | DERIVED INPUT (surface-water exclusion) | yes |
+| 8 | Overture Maps `base/land_use` landfill/quarry/brownfield | OSM via Overture | secondary/exploratory candidates | yes (secondary scenarios) |
+| 9 | Overture `transportation`, `divisions`, `base/land` wetland | OSM via Overture | CONTEXT (roads, counties) / superseded (OSM wetland) | context |
+| 10 | NSRDB GOES v4.0.0 TMY-2024 + PVWatts v8 (PySAM) | NREL | approximated generation per MW (context) | cached; recomputable offline |
+| 11 | EIA-860/923 via PUDL | EIA / Catalyst Cooperative | VALIDATION | no |
+| 12 | FEMA NFHL | FEMA | **GAP – not integrated** | — |
+| 13 | NC DEQ Brownfields Areas of Environmental Concern | NC DEQ | **GAP – not in repository** | — |
 
 ---
 
-## 1. Candidate sites — OpenStreetMap disturbed-land polygons (via Overture Maps) — **USE (with caveats)**
+## 1. NC DEQ Brownfields Program project boundaries — AUTHORITATIVE
 
-| | |
-|---|---|
-| Organization | OpenStreetMap contributors, redistributed by Overture Maps Foundation |
-| Dataset | Overture `base/land_use`, release `2026-09-23.1` |
-| Access | `s3://overturemaps-us-west-2/release/2026-09-23.1/theme=base/type=land_use/` (anonymous, GeoParquet). Read with `pyarrow.dataset` using bbox-column row-group pruning (`scripts/download_overture.py`). DuckDB's `httpfs` extension could not be downloaded here, so pyarrow is used. |
-| Fields used | `id`, `geometry` (WKB), `subtype`, `class` (`landfill`, `brownfield`, `quarry`), `names.primary`, `source_tags` (raw OSM tags: `operator`, `abandoned`, `disused`, `description`, `demolished:power`, `ref:US:EIA`, …), `sources[0].record_id` (OSM way/relation id) |
-| Geometry | Polygon / MultiPolygon, EPSG:4326 |
-| Coverage | NC: 87 landfill, 170 brownfield, 182 quarry polygons whose representative point is in NC; 268 kept at >= 5 gross acres after overlap de-duplication |
-| Licence | ODbL 1.0 (attribution "© OpenStreetMap contributors"; share-alike on derived databases) |
-| Update | OSM edits up to the release snapshot (Overture `version` 2026-09-06) |
-| Limitations | (1) **Not an authoritative contamination/brownfield register.** OSM `landuse=brownfield` means "previously developed land awaiting redevelopment", not an EPA/NC DEQ brownfield designation. (2) **Operational status is mostly unknown**: only 20/268 carry lifecycle tags. Many quarries are operating aggregate pits (Martin Marietta, Vulcan, Wake Stone) and some landfills are active MSW landfills. (3) Completeness is volunteer-driven and uneven. (4) Outline precision is digitiser-dependent (generally imagery-traced; good enough for 10 m raster statistics, not for parcel/legal boundaries). |
-| Recommendation | Use as the polygon source for the hackathon, labelled as "mapped disturbed land". Add EPA RE-Powering when reachable (below) to attach authoritative site program/status where points fall inside polygons. |
+* **File**: `data/raw/NCBP_Feature_Poly_View_-1215719022186211726/ff89c245-760d-47d7-a462-4ebadb7ecc51.gdb`, layer `NCBP_Project_Poly`
+* **Geometry**: MultiPolygon, 1,363 records, EPSG:2264 (NAD83 / North Carolina ftUS). 1 invalid geometry in source (repaired with `make_valid`, flagged `deq_geometry_valid_in_source=false`); 206 multipart.
+* **Identifiers**: `BF_ID` (numeric) and `BF_Number` (e.g. `08041-04-049`), both unique; `GlobalID`. SolarSight ID = `DEQ-<BF_Number>`.
+* **Fields used**: BF_Number, BF_Name, Address, City, County, BF_Acreage, Status, Status_Date, Allowed_Use, Restricted_Media, COC, Source, Instrument_Status, Rec_Docs_Link, EditDate.
+* **Coded-value domains (from the GDB)**: Status = {Pending, Ineligible, Complete, Recorded, Inactive Eligible, Active Eligible, RFR PC Complete, No Further Interest}; Allowed Uses = {COM, IND, MIX, MRO, RES, NONE, NON REC, INSTNL, IND & COM}; Restricted Media = {MM, GW, IndrAir, Soil, SrfWtr}; Primary Contaminant, Source, Instrument Status, Certification.
+* **No field documentation shipped** (empty item metadata). SolarSight therefore carries `Status` verbatim and does not interpret it.
+* **Vintage**: EditDate 2025-07-17 … 2026-09-23. One `Status_Date` is in 2029 (data-entry error; left as is).
+* **Area**: polygon acreage agrees with `BF_Acreage` (median ratio 1.00).
+* **Limitations**: a program record says the property has brownfield history, not that it is vacant or available; many are redeveloped (see building coverage).
 
-## 2. EPA RE-Powering America's Land screening dataset — **BLOCKED**
+## 2. EPA RE-Powering Mapper screened sites — EPA BASELINE
 
-| | |
-|---|---|
-| Organization | U.S. EPA, RE-Powering America's Land Initiative |
-| What exists (from web search, not downloaded) | Downloadable screening spreadsheet (>130,000 contaminated lands, landfills, mine sites) and the RE-Powering Mapper; ArcGIS feature services e.g. `services.arcgis.com/cJ9YHowT8TU7DUyn/.../RE_Powering_Mapper_Sites_2022/FeatureServer/0` and `services1.arcgis.com/IAQQkLXctKHrf8Av/.../EPA_RE_Powering_Screening_Dataset/FeatureServer`. EPA's attribute appendix (search snippet) describes an acreage field and "Estimated PV Capacity (MW)" based on 6.9 acres/MW. |
-| Tested | `www.epa.gov`, `services.arcgis.com`, `services1.arcgis.com`, `edg.epa.gov`, data.gov, databasin, amerigeoss: all HTTP 403 at the egress proxy. **No records were loaded; NC count, geometry type (believed point), and fields are unverified.** |
-| Recommendation | First task for anyone on an open network: download the NC subset and test whether it is points-only. Expected role: authoritative site program/status attributes joined to OSM polygons; do not invent polygons around points. |
+* **Files**: `data/raw/re_powering_screening_geodatabase/re_powering_screening_geodatabase/re_powering_mapper_sites.gdb` (layer `re_powering_mapper_sites`, Point, 190,976 records, EPSG:3857) and `data/raw/DataRecords.csv` (the Mapper attribute-table export with full labels and units).
+* **Same table**: all 6,074 NC records join 1:1 on Cross-Reference Number (`Ref`). Acreage, GHI, all distances and voltages are identical; Estimated PV Capacity differs only by CSV rounding to 2 dp. The CSV adds `Solar Installation Potential` (Y for all 6,074 NC rows, so it carries no information) and labelled units. 5 CSV rows nationwide (PA, MD, WV, TX, CA; none NC) have unescaped quotes and are skipped by the strict reader.
+* **Conclusion**: the local download already contains every Mapper attribute. Nothing was re-downloaded or scraped.
+* **NC programs**: NC Hazardous Waste Sites 2,577; **NC Brownfield Projects 973**; EPA Brownfields (ACRES) 946; NC Permitted Solid Waste Landfills 673; NC Pre-regulatory Landfills 656; LMOP 109; RCRA 89; Superfund 48; AML 3.
+* **Fields used (GDB name → Mapper label, unit)**: Ref → Cross-Reference Number; SiteID → Site ID (= DEQ `BF_Number` for NC Brownfield Projects); Acreage → Acreage (acres); EstPVCap → Estimated PV Capacity (MW; **= acres / 6.9**, median implied 6.900 ac/MW, capped at 600 MW, AC/DC not stated); UtilPV → Utility Scale PV (Y iff EstPVCap >= 5 MW); DistribPV; GHI → Maximum Annual GHI (kWh/m²/day); TransDist → Distance to Nearest Transmission Line (**miles**); TLkV (kV); TLStatus; SSDist (miles); SSVoltage → "Nearest Substation Voltage (Volts)" — **values are kV** (100, 115, 230); RdDist, RailDist (miles); Latitude/Longitude.
+* **Vintage**: not stated in the files. EPA's user guide / data documentation is dated 2022. Labelled `epa_screening_vintage` = "as downloaded; vintage not stated".
+* **Limitations**: point geometry (address geocode); historical infrastructure layer; EPA acreage for NC brownfields is the DEQ-reported acreage at that time.
 
-## 3. Grid infrastructure — OSM power lines & substations (via Overture) — **USE (as proximity proxy only)**
+## 3. USFWS National Wetlands Inventory, North Carolina — DERIVED INPUT
 
-| | |
-|---|---|
-| Dataset | Overture `base/infrastructure`, `subtype = power`, release `2026-09-23.1` |
-| Fields used | `class` (`power_line`, `substation`, `plant`, `generator`), `source_tags.voltage` (semicolon list in volts; max taken), `plant:source` / `generator:source` |
-| Geometry | `power_line`: LineString; `substation`: mostly Polygon; `plant`/`generator`: Polygon/Point |
-| Coverage (NC bbox) | 14,899 `power_line` LineStrings, 89% voltage-tagged; 11,220 at >= 69 kV. 4,570 substations, 3,142 tagged >= 69 kV. 1,178 plants (1,003 carry `ref:US:EIA`). 19,920 solar plant/generator polygons. |
-| Licence | ODbL 1.0 |
-| Accuracy | Traced from imagery / tower positions; typically metre- to tens-of-metres level for transmission. Completeness of `power=line` (transmission) in the US Southeast is good; `minor_line` (distribution) is sparse and **not used**. |
-| What it does NOT tell you | Capacity, hosting capacity, queue position, interconnection cost or feasibility, ownership agreements, substation transformer headroom. |
-| Validation | Operating NC PV plants (EIA-860 coordinates, via PUDL) measured against the same layers: see DATA_FEASIBILITY.md. |
-| Recommendation | Use. Label "distance to mapped >= 69 kV line / substation (OpenStreetMap)". |
+* **File**: `data/raw/NC_geodatabase_wetlands/NC_geodatabase_wetlands.gdb`; layers `NC_Wetlands` (589,943 MultiPolygons), `North_Carolina`, `NC_Wetlands_Project_Metadata` (910 mapping projects), `NC_Wetlands_Historic_Map_Info`. CRS: NAD83 Albers (USGS CONUS).
+* **Fields used**: `WETLAND_TYPE` (Riverine 230,514; Freshwater Forested/Shrub 197,199; Freshwater Pond 113,858; Freshwater Emergent 23,016; Estuarine & Marine Wetland 18,900; Estuarine & Marine Deepwater 4,767; Lake 1,656; Other 33), `ATTRIBUTE` (Cowardin code).
+* **Classes used**: *NWI wetland* = Freshwater Forested/Shrub, Freshwater Emergent, Estuarine & Marine Wetland. *NWI water* = Riverine, Pond, Lake, Estuarine & Marine Deepwater (context only).
+* **Coverage**: mapping projects cover 98.8% of NC; all 662 candidates are covered. **Imagery is old: median project image year 1983.**
+* **Limitations**: not a jurisdictional delineation; 1980s imagery predates most redevelopment.
 
-## 4. HIFLD Electric Power Transmission Lines — **BLOCKED / deprecated**
+## 4. USGS 3DEP 1/3 arc-second DEM — DERIVED INPUT
+`s3://prd-tnm/StagedProducts/Elevation/13/TIFF/current/`. COG, EPSG:4269, ~10 m, float32 m. Per-site windows cached in `data/raw/dem/`. Survey dates vary.
 
-HIFLD Open was deactivated in 2025 (per search results; mirrors exist at data rescue projects and
-ICPSR/DataLumos). Not reachable here. Not needed given OSM coverage; could be used to cross-check line positions.
+## 5–9. Overture Maps (OpenStreetMap-derived), release 2026-09-23.1 — ODbL
+* `base/infrastructure` power: 14,899 `power_line` segments in the NC bbox, 89% voltage-tagged, 11,220 at >= 69 kV; 3,142 substations at >= 69 kV. OSM `power=line` represents existing lines; proposed/disused lines use other tags and are excluded.
+* `buildings` (OSM + ML footprints): 10,288 footprints touching candidate polygons (`scripts/download_buildings.py`).
+* `base/water` polygons (current surface water); `base/land` `subtype=wetland` (OSM `natural=wetland`, the layer phase 1 called "mapped wetland"; now `osm_mapped_wetland_*`, context only); `transportation/segment` roads; `divisions` NC boundary and counties.
+* `base/land_use` landfill/quarry/brownfield polygons: secondary and exploratory candidates only. 21 OSM polygons that are at least 50% covered by DEQ polygons were dropped in favour of DEQ.
 
-## 5. Elevation — USGS 3DEP 1/3 arc-second DEM — **USE**
+## 10. NREL NSRDB + PVWatts — cached approximation
+GOES v4.0.0 TMY-2024 (S3 HDF5, 0.04° grid); cached per-pixel 8,760-h files in `data/raw/nsrdb_tmy/`. PVWatts v8 via `NREL-PySAM 7.1.1` runs locally.
 
-| | |
-|---|---|
-| Organization | U.S. Geological Survey, 3D Elevation Program |
-| Access | `https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/n{lat}w{lon}/USGS_13_n{lat}w{lon}.tif` — public S3, cloud-optimised GeoTIFF (512 px tiles, overviews), read with rasterio `/vsicurl/` windowed reads (`scripts/download_elevation.py`) |
-| CRS / resolution | EPSG:4269 (NAD83 geographic), 9.259e-5 deg (1/3 arc-second, ~10 m), float32 metres, nodata −999999 |
-| Coverage | All 268 candidates; 100% valid pixels inside polygons. Example tile `n36w079` last modified 2025-05-07. |
-| Limitations | Seamless product mixes lidar acquisition dates; **landfill and quarry topography changes quickly**, so slopes describe the surface at survey time. |
-| Recommendation | Use. Cache per-site clips (24 MB for 268 sites) — no runtime dependency. |
+## 11. EIA-860/923 via PUDL — VALIDATION only
+934 NC PV plants. Used to validate PVWatts (model about 10% above observed; 92 fixed-tilt plants) and as a grid-distance yardstick.
 
-## 6. Solar resource — NREL NSRDB GOES v4.0.0 TMY-2024 — **USE**
+## 12. FEMA NFHL — GAP (accepted)
+Not acquired. Schema reserves `fema_flood_overlap_acres`, `fema_flood_overlap_pct` (null) and `fema_flood_data_status = "not_assessed"`.
 
-| | |
-|---|---|
-| Organization | NREL (National Solar Radiation Database), AWS Open Data |
-| Access | `https://nrel-pds-nsrdb.s3.us-west-2.amazonaws.com/GOES/tmy/v4.0.0/nsrdb_tmy-2024.h5` (928,896,657,438 bytes). Opened with h5py over fsspec HTTP range requests (`scripts/download_solar_resource.py`). |
-| Fields used | `meta` (latitude, longitude, elevation, timezone, state), `time_index`, `ghi`, `dni`, `dhi`, `air_temperature`, `wind_speed` (scaled ints; divided by `psm_scale_factor`) |
-| Resolution | 0.04 deg grid (~4 km) as observed in `meta`; 8,760 hourly values, timestamps UTC at hh:30 |
-| Coverage | 7,948 pixels flagged North Carolina; 217 unique nearest pixels for the 268 candidates |
-| Limitations | Typical-year data (not a forecast); 4 km pixel smooths local horizon shading. NREL's PVWatts web API and `developer.nrel.gov` were blocked, so PVWatts was run locally via PySAM. |
-| Recommendation | Use (cache the per-pixel 8760 files; ~125 KB each). |
+## 13. NC DEQ Areas of Environmental Concern — GAP
+Not present in `data/raw/` (the Brownfields GDB contains only `NCBP_Project_Poly`). Schema reserves `aec_overlap_acres`, `aec_count` (null) and `aec_data_status = "not_available"`.
 
-## 7. PV performance model — NREL PVWatts v8 via PySAM — **USE**
-
-`NREL-PySAM==7.1.1.post1` (`PySAM.Pvwattsv8`), executed locally. Same engine as the PVWatts API; no API key or network needed. Inputs listed in `src/analysis/assumptions.py`.
-
-## 8. EIA-860 / EIA-923 via Catalyst Cooperative PUDL — **VALIDATION**
-
-| | |
-|---|---|
-| Access | `s3://pudl.catalyst.coop/nightly/out_eia__yearly_generators.parquet`, `core_eia860__scd_generators_solar.parquet` (nightly build dated 2026-10-03) |
-| Fields used | `plant_id_eia`, `generator_id`, `report_date`, `prime_mover_code`(=PV), `state`(=NC), `capacity_mw`, `net_capacity_mwdc`, `capacity_factor`, `net_generation_mwh`, `latitude`, `longitude`, `operational_status`, `uses_technology_fixed_tilt`, `uses_technology_single_axis_tracking`, `tilt_angle_deg` |
-| Coverage | 934 NC PV plants, 9,942 generator-years (2007–2026 report dates) |
-| Use | (a) observed NC capacity factors to validate PVWatts; (b) median NC tilt (20°) and fixed-tilt prevalence; (c) yardstick for grid distances; (d) flags EIA PV plants already inside a candidate polygon. |
-| Licence | PUDL data CC-BY-4.0; underlying EIA data public domain. |
-
-## 9. Roads — OSM via Overture `transportation/segment` — **CONTEXT**
-
-`subtype = road`, classes motorway, trunk, primary, secondary, tertiary, residential, unclassified,
-living_street (service/track excluded). LineString, ODbL. Median candidate distance is ~10 m, so
-it does not discriminate between sites.
-
-## 10. Water — OSM via Overture `base/water` — **USE as usable-area exclusion**
-
-Polygon water bodies (ponds, flooded pits, reservoirs). ODbL. Used to remove open water from usable area.
-
-## 11. Wetlands — **GAP**
-
-* USFWS National Wetlands Inventory (`fws.gov`, `fwspublicservices.wim.usgs.gov`): **BLOCKED**.
-* Fallback tested: OSM `natural=wetland` (Overture `base/land`, `subtype = wetland`): 28,095 polygons in the NC bbox but only 39 near candidates and mean overlap 0.07%. OSM wetland mapping is far from complete and has no jurisdictional meaning. Used only as a usable-area exclusion where present; **not defensible as an objective or a "wetland_overlap_pct" claim.**
-
-## 12. Flood hazard — **GAP**
-
-FEMA NFHL (`hazards.fema.gov`, `msc.fema.gov`) and NC Flood Risk Information System: **BLOCKED**. No
-credible substitute was found on reachable hosts. `flood_exposure_pct` is stored as NaN with
-`flood_source = "unavailable"`. When reachable, FEMA SFHA (Zone A/AE/VE) overlap % is a defensible
-*context* metric (mapped 1%-annual-chance regulatory floodplain, not a probability forecast).
-
-## 13. Boundaries — Overture `divisions/division_area` — **USE (display/labels)**
-
-NC `region` land polygon (US-NC) and 100 county polygons; ODbL.
-
-## Sources looked at and not used
-
-ESA WorldCover (S3 reachable) — 10 m land cover; its "herbaceous wetland" class misses forested
-wetlands, which dominate NC, so it was not used as a wetland proxy. NLCD (mrlc.gov) blocked.
+## Phase-1 sources no longer in the production path
+OSM disturbed-land polygons as the *primary* candidate list (superseded by DEQ for brownfields); OSM wetlands (superseded by NWI); ESA WorldCover (not used).

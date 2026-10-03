@@ -1,4 +1,6 @@
-"""Exploratory Pareto analysis on the real feasibility dataset.
+"""PHASE-1 EXPLORATORY (superseded; reads the phase-1 schema and will not run on v2 data).
+
+Exploratory Pareto analysis on the real feasibility dataset.
 
 Outputs
   data/processed/pareto_results.parquet   long table: model x site status/rank/dominator

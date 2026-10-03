@@ -1,234 +1,122 @@
-# SolarSight — data feasibility (phase 1)
+# SolarSight — data feasibility and frozen foundation
 
-Question: *Can we produce a small dataset of REAL North Carolina candidate locations with
-sufficiently credible metrics to make the Pareto-siting concept technically defensible?*
+Phase 1 (OSM candidates, GO WITH MODIFICATIONS) is archived in `docs/analysis/phase1/`. This
+document is the phase-2 state after integrating NC DEQ Brownfields, the full EPA RE-Powering
+attribute table and USFWS NWI. Numbers come from `docs/analysis/foundation_report.md`.
 
-Short answer: **yes for candidates, terrain, energy and grid proximity; no (yet) for wetlands and
-flood. The Pareto idea works, but not in the form first hypothesised** — see the decision gate.
+## Answers to the audit questions
 
-All numbers below come from `data/processed/feasibility_sites.parquet` and
-`docs/analysis/pareto_report.md` (regenerate with `scripts/analyze_pareto.py`).
+1. **Does the local EPA download contain the Mapper attributes?** Yes. The GDB layer
+   `re_powering_mapper_sites` has every attribute. `DataRecords.csv` is the same table (6,074 NC rows,
+   1:1 on Cross-Reference Number, identical values) with labelled units. EPA PV capacity = acres / 6.9
+   (AC/DC unstated).
+2. **How many DEQ polygons match EPA?** 973 by exact ID (high confidence), 3 by address+city
+   (medium), 7 by unique point-in-polygon (low), 3 ambiguous (left unmatched), 377 unmatched (DEQ
+   projects newer than EPA's snapshot). Every EPA "NC Brownfield Projects" record matched.
+3. **DEQ vs EPA acreage.** EPA acreage *is* the DEQ-reported acreage (equal for 97.3%). Current DEQ
+   polygon area: median abs diff 0.10 ac (1.9%); 76.6% within 10%; 92 records differ by >50%
+   (mostly boundary amendments and multipart updates, e.g. Organic Production Services 0.39 → 14.9 ac).
+4. **Our transmission distance vs EPA.** From the same EPA point: median abs diff 0.20 km,
+   Spearman 0.81, 86% within 0.5 km. Production metric (polygon edge) vs EPA: Spearman 0.85.
+   Disagreements come from definitions (EPA includes 66 kV and unknown-voltage lines; SolarSight
+   requires a ≥ 69 kV tag) and from data vintage.
+5. **Is the transmission metric trustworthy?** Yes, as a proximity proxy. It is validated against
+   brute force and against EPA, and it is current.
+6. **Does NSRDB/PySAM change decisions?** No. MWh per MW AC: CV 2.0% (1,634–1,860), inside the
+   model's ~10% bias. Adding it as an objective would let 2% differences grow the 10 MW frontier
+   from 2 to 11. It stays validation and context.
+7. **Capacity convention.** Project size in **MW AC**; land density and PVWatts in MW DC; DC/AC 1.25.
+8. **Acres per MW.** 0.35 MW DC (0.28 MW AC) per *usable* acre, about 3.57 usable acres per MW AC
+   (LBNL 2019 whole-plant median). EPA's 6.9 gross acres/MW is shown separately.
+9. **Terrain formulation.** D+: slope exclusion (default 10%) for feasibility, then minimise the mean
+   slope of the remaining usable land. Of the alternatives:
+   * A (whole-site mean slope) double counts.
+   * B/C (extreme-only exclusion) do not change the frontier (C has the same frontier as D+) but
+     inflate feasibility with land rated unbuildable.
+   * D (slope only as a constraint, grid as the only objective) gives a 29-way tie at 0 km.
+10. **Does NWI change usable acreage?** It changes few decisions. 113 of 434 DEQ candidates overlap
+    NWI wetland (50 > 5%, 27 > 20%, max 88%). Excluding NWI flips feasibility for 4 / 7 / 3 / 2 sites
+    at 5 / 10 / 20 / 40 MW. The overlap is shown and the exclusion is switchable.
+11. **What was "mapped wetlands"?** OSM `natural=wetland` (Overture `base/land`). It is now
+    `osm_mapped_wetland_*`, context only (30 candidates touch it vs 200 for NWI).
+12. **Are DEQ Brownfields sufficient as the primary universe?** Yes. 434 polygons ≥ 10 ac, 361 not
+    built over, and 162 / 75 / 34 / 16 feasible for 5 / 10 / 20 / 40 MW AC.
+13. **Candidates per scenario.** See the funnel below.
+14. **Meaningful tradeoffs?** Only a few. The frontier is 2 sites in every size class. Grid distance
+    and terrain are uncorrelated (ρ about 0), many sites touch a line (29 of 75 at 10 MW), and two large
+    flat sites sit on lines. This is robust: substation distance, three objectives or tolerances give
+    2–5. The product answer is to show non-dominated ranks 1–3 (8 sites at 10 MW), because the
+    availability of any rank-1 site is unknown. No objective was added to enlarge the frontier.
+15. **Still missing.** FEMA flood, DEQ AEC polygons, site availability/ownership, current NWI,
+    landfill cell-level status.
+16. **Blocking?** No. See the decision.
 
-Environment note: this spike ran behind an egress policy that blocked epa.gov, fws.gov, fema.gov,
-nrel.gov, eia.gov, nconemap.gov, `*.arcgis.com` and OpenStreetMap servers. Everything here was
-obtained from public S3 buckets (Overture/OSM, USGS 3DEP, NREL NSRDB, Catalyst PUDL). Blocked
-sources are **untested, not rejected**.
+## Funnel — baseline brownfield scenario (slope ≤ 10%, NWI excluded from usable area)
 
----
+| Target MW AC | Usable acres needed | Candidates | DEQ record, not built out | Large enough | Screen-eligible | Rank 1 | Rank ≤ 3 |
+|---|---|---|---|---|---|---|---|
+| 5 | 17.9 | 662 | 361 | 162 | 162 | 2 | 10 |
+| 10 | 35.7 | 662 | 361 | 75 | 75 | 2 | 8 |
+| 20 | 71.4 | 662 | 361 | 34 | 34 | 2 | 7 |
+| 40 | 142.9 | 662 | 361 | 16 | 16 | 2 | 4 |
 
-## Candidate sites — what works
+Slope rule sensitivity (feasible count at 5 / 10 / 15%): 10 MW gives 55 / 75 / 83 and 40 MW gives
+7 / 16 / 16. The frontier membership is identical across thresholds (Jaccard 1.0), so the slope rule
+changes *who qualifies* but not *who leads*.
 
-* **268 real NC polygons** (OSM `landuse=landfill|brownfield|quarry` via Overture `2026-09-23.1`),
-  after clipping to NC, removing polygons >= 50% inside a larger one, and dropping < 5 gross acres:
-  153 quarries, 78 landfills, 37 brownfields. Polygons, not points, so area/slope/overlap are real
-  polygon statistics.
-* Examples that check out: South Wake Landfill (701 ac), Johnston County Landfill, Charlotte Motor
-  Speedway Landfill, Duke's former Cape Fear coal plant (353 ac brownfield), Edgecombe Genco
-  (retired coal plant, OSM even carries its EIA id), coal-ash structural fills at Brickhaven and
-  Colon mines, retired ash basins.
-* **Weaknesses (important):**
-  1. Not an authoritative register. OSM "brownfield" ≠ EPA/NC DEQ brownfield designation.
-  2. **Operational status is unknown for 248/268** (only 20 carry lifecycle tags). Many quarries are
-     operating aggregate pits (Martin Marietta, Vulcan, Wake Stone); Aurora Mine is an operating
-     phosphate mine; South Wake is an active MSW landfill; "WH U 0015" is a USACE military landfill.
-     Mapped disturbed land is not the same as available land.
-  3. EPA RE-Powering (the intended authoritative source) could not be loaded here. Its NC count,
-     geometry type (believed points) and fields are unverified.
+Secondary scenarios at 10 MW: landfills (likely_closed or mixed) 6 → 1 feasible; quarries
+(likely_closed) 11 → 2. Both are thin and should be labelled exploratory.
 
-## Solar production — what works
+## Demo candidates (10 MW AC baseline unless noted) — screening candidates, not recommendations
 
-* NREL NSRDB GOES v4.0.0 TMY-2024 read straight from S3 (h5py range reads, 217 pixels at 0.04°),
-  PVWatts v8 run locally with PySAM. No API key, fully cacheable.
-* Modelled AC capacity factor across candidates: median 0.203 (range 0.184–0.215).
-* **Validation against reality:** for 92 operating NC fixed-tilt PV plants (EIA-860/923 via PUDL),
-  running the same model with each plant's own tilt and DC/AC gives modelled/observed CF median
-  **1.10** (p10 1.01, p90 1.25), r = 0.57. The model is ~10% optimistic (availability, curtailment,
-  degradation and TMY-vs-actual weather are not modelled). The bias is roughly uniform, so it does
-  not change rankings; the UI should call the output "estimated" and can show the 10% gap.
-* **Energy ≈ acreage.** Specific yield varies only 1,290–1,503 kWh/kWdc (CV 2.2%).
-  r(log MWh, log usable acres) = 0.9998; site solar resource explains **0.05%** of the variance in
-  log MWh. "Maximise MWh" is, in practice, "maximise buildable size".
+| Candidate | Source / confidence | Acres gross → usable | Max MW AC | Grid km (EPA km) | Usable slope° | NWI % | Role in demo | Warning |
+|---|---|---|---|---|---|---|---|---|
+| Singer Site, Chocowinity (DEQ-02005-98-007) | DEQ Recorded / high | 39 → 36 | 10.1 | 0.03 (0.03) | 0.42 | 0 | Rank-1; just big enough for 10 MW (falls out at 20 MW) | 7% built; barely feasible |
+| WestPoint Home (former), Wagram (DEQ-18035-14-083) | DEQ No Further Interest / high | 985 → 680 | 190 | 0.00 (0.00) | 0.77 | 29.4 | Rank-1 in every size class; shows the NWI switch | Exited the program; large NWI share |
+| Maxton Feed Mill (DEQ-21020-17-078) | DEQ Recorded / high | 344 → 212 | 59 | 1.57 (1.58) | 0.65 | 38.3 | Rank-1 at 20/40 MW: flatter but farther; EPA and SolarSight agree | High NWI overlap |
+| Schlage Lock Facility, Rocky Mount (DEQ-08001-04-064) | DEQ Recorded / high | 47 → 41 | 11.6 | 0.00 | 1.07 | 0 | Rank-2, dominated only by WestPoint (equal distance, rougher) | 12% built |
+| Carolina Creosoting Corp., Leland (DEQ-08020-04-010) | DEQ Recorded / high | 87 → 58 | 16.3 | 0.06 | 0.76 | 32.0 | Rank-2; explanation demo vs Singer Site | Creosote site, NWI |
+| Texfi Industries, Fayetteville (DEQ-13017-09-026) | DEQ Recorded / high | 80 → 73 | 20.4 | 2.88 (EPA 0.00) | 0.97 | 0 | Shows the EPA vs current-definition disagreement (EPA counts a 66 kV line) | grid definition |
+| Abbott Laboratories, Laurinburg (DEQ-07027-03-083) | DEQ Recorded / high | 51 → 44 | 12.2 | 3.31 (3.28) | 0.80 | 0 | Flat but far | 15% built |
+| ReVenture East, Charlotte (DEQ-15020-11-060) | DEQ Recorded / high | 303 → 181 | 50.5 | 0.00 | 2.96 | 6.2 | Close but rough (rank 26): terrain tradeoff | steep (p90 9.7°) |
+| Townsend and Acme-McCrary, Siler City (DEQ-20060-16-019) | DEQ Recorded / high | 79 (EPA 34) → 68 | 19.0 | 0.77 | 2.48 | 0 | Current DEQ polygon is 2.3× the EPA acreage | boundary changed since EPA |
 
-## Grid infrastructure — what works
+**Not for the main demo**: Dorothea Dix Park, Raleigh (DEQ Active Eligible). It is a 300-acre city
+park and shows why a brownfield record does not mean availability. Use it only to illustrate that warning.
 
-* OSM `power=line` in the NC bbox: 14,899 segments, 89% voltage-tagged, **11,220 at >= 69 kV**;
-  3,142 substations tagged >= 69 kV. Distances computed polygon-edge-to-line in EPSG:32119.
-* Eligible candidates: median **0.53 km** to a >= 69 kV line (p90 4.4 km, max 23 km); 31/194 are
-  crossed or touched by a line; 57% within 1 km, 92% within 5 km.
-* **Yardstick:** operating NC PV plants measured the same way: 1–5 MWac plants median 0.93 km
-  (p90 3.6 km); > 20 MWac plants median 0.38 km (p90 1.6 km). Candidates sit in the same range,
-  which supports both data quality and the proxy's relevance — real solar farms do cluster near
-  mapped lines.
-* Line distance and substation distance correlate (Spearman 0.64); line distance has the cleaner
-  coverage. Neither says anything about capacity, queue, or cost (and documented as such).
-* HIFLD Open is deactivated; not needed.
+## Frozen methodology (what the app implements)
 
-## Terrain — what works
-
-* USGS 3DEP 1/3″ COGs read by window from S3 for all 268 sites (24 MB), reprojected to EPSG:32119
-  at 10 m, Horn slope. Unit-tested on synthetic planes; spot checks are physically plausible
-  (Cape Fear plant 1.2° mean slope on the coastal plain; South Wake Landfill 43 m relief at 4.5°;
-  Boone mountain quarry 19.9°; Aurora phosphate pit floor at −28 m).
-* **Disturbed land is not flat:** median site mean slope 6.4° (brownfields 2.5°, landfills 5.9°,
-  quarries 8.8°); a median 43% of each polygon is steeper than 10%. Landfill caps and quarry pit
-  walls make slope highly informative — the opposite of the "everything is flat" worry.
-* Mean slope is independent of energy (ρ = 0.06) and grid distance (ρ = 0.08); mean and p90 slope
-  are redundant (ρ = 0.97), keep one.
-* Caveat: DEM acquisition dates predate current landfill/quarry topography.
-
-## Environmental data — what works / doesn't
-
-* **Open water** (OSM): works; removed from usable area (median 0%, p90 7.6% of polygon; flooded
-  pits up to 99%).
-* **Wetlands:** NWI blocked. OSM wetlands touch only 39 features near candidates (mean overlap 0.1%)
-  — clearly incomplete. **Not defensible as a metric yet.**
-* **Flood:** FEMA NFHL blocked; no substitute found. `flood_exposure_pct` is NaN (marked unavailable).
-* **Existing solar on site:** OSM solar polygons + EIA plant points; only 1 candidate flagged
-  (a flooded quarry with an EIA PV plant inside).
-* **Roads:** 78% of eligible sites are within 100 m of a drivable public road; median 10 m.
-  Road distance does not differentiate disturbed-land sites → context only.
-
-## Usable area
-
-`usable = polygon − water − OSM wetland − pixels steeper than 10 %` on the 10 m grid.
-Median usable fraction 0.53 (brownfields 0.94, landfills 0.57, quarries 0.46). 74 of 268 sites
-fall below 10 usable acres. Sensitivity: 5% / 15% slope rules leave 162 / 209 eligible.
-
----
-
-## Pareto results on the real data
-
-194 eligible sites (59 landfills, 22 brownfields, 113 quarries).
-
-| Model (objectives) | Frontier | % | Comment |
-|---|---|---|---|
-| A: MWh↑, grid line km↓, mean slope↓ | 12 | 6.2% | Mix of 6 landfills, 3 brownfields, 3 quarries; real tradeoffs |
-| A′: MWh↑, grid line km↓, slope of usable land↓ | 18 | 9.3% | |
-| B: MWh↑, grid line km↓ (slope as constraint) | 5 | 2.6% | **Degenerate:** the 5 largest sites; non-dominated-sort depth 39 |
-| B′: MWh↑, substation km↓ | 4 | 2.1% | Same problem |
-| C: usable acres↑, grid km↓, water %↓ | 12 | 6.2% | Water % is mostly 0, and larger sites have more water → weak |
-| D: MWh↑, grid km↓, road km↓ | 6 | 3.1% | Road adds almost nothing |
-| E: MWh↑, grid km↓, MWh/acre↑ | 18 | 9.3% | MWh/acre (CV 2%) just adds near-ties; pulls quarries in |
-| F: MWh↑, grid line km↓, substation km↓ | 8 | 4.1% | Two correlated grid proxies |
-
-**What the data shows**
-
-1. **Too few, not too many, nondominated sites.** The worry was a frontier of everything; the
-   real problem is the opposite. Usable size spans 10 → 1,923 acres (3 orders of magnitude) and
-   31 sites have grid distance ≈ 0, so the biggest site touching a line dominates nearly every
-   smaller one. Model B's frontier is "the five biggest sites" — two of which (Aurora Mine,
-   3M Pittsboro) are probably operating mines. A planner learns nothing from that.
-2. **Size is a scenario, not an objective.** Nobody chooses between a 3 MW brownfield and a 500 MW
-   mine on the same axis. Running the same 3 objectives inside project-size bands produces sensible
-   frontiers and *independent* objectives (Spearman MWh vs grid distance within bands: −0.15 to 0.13):
-
-   | Band (est. MWac) | n | Frontier (A objectives) |
-   |---|---|---|
-   | 2.8–10 | 80 | 13 (16%) |
-   | 10–40 | 81 | 12 (15%) |
-   | 40–150 | 30 | 4 (13%) — Cape Fear plant, South Wake LF, Colon & Brickhaven coal-ash fills |
-   | ≥ 150 | 3 | 3 (all) |
-
-   Conservative population (landfills + brownfields + quarries tagged inactive, n = 88):
-   model A overall 9 sites (10%); per band 9/40 (23%), 7/36 (19%), 4/11 (36%), 1/1. Small bands
-   naturally give proportionally larger frontiers — in the UI, show the band count next to the frontier.
-3. **Slope earns its place** (independent, highly variable) and its exclusion threshold matters:
-   5% vs 10% changes the model-B frontier (Jaccard 0.57); 10% vs 15% does not (1.00).
-4. **Explanations work** in raw units, e.g. *"NC-BR-013 is dominated by NC-LA-035: higher estimated
-   annual generation (41,945 vs 12,054 MWh/yr), lower distance to mapped >=69 kV line (0.34 vs 1.18 km),
-   lower mean slope (0.5 vs 0.6°)."*
-
-### Knee / "balanced" point
-
-Prototyped (`knee_point`: farthest frontier point from the extreme-point hyperplane). On the model-B
-frontier the answer changes with the rescaling: range-normalised → 3M Pittsboro, rank-normalised →
-Aurora Mine, log-energy → 3M Pittsboro, with knee scores near zero. With 3–13 points per frontier
-and objectives in incommensurable units, a knee is a disguised weighting. **Do not label any site
-"best" or "balanced".** Instead show the *tradeoff ladder* (`tradeoff_ladder`): neighbouring
-frontier points and the exchange rate in raw units (MWh gained per extra km), and let the user decide.
-
-### Alternatives to Pareto
-
-* Weighted sum / TOPSIS: require weights or normalisation that are exactly the arbitrary
-  preferences we want to avoid; TOPSIS also depends on the ideal/anti-ideal normalisation. Reject.
-* Lexicographic: hides tradeoffs; reject as default (fine as a sort order).
-* **ε-constraint / scenario filtering: adopt alongside Pareto.** The size band, max grid distance,
-  max slope threshold, and "include unknown-status quarries" toggles *are* ε-constraints the user
-  sets explicitly; Pareto then runs on what remains. This is transparent and cheap (n < 300 →
-  instant in the browser).
-* Maximum coverage / location-allocation: no demand points or budget here; out of scope.
-
-Recommendation: **Pareto + explicit user-set constraints**, no composite score.
-
----
-
-## Methodological problems (weak assumptions)
-
-1. Candidate availability: OSM footprint ≠ available land; operating status unknown.
-2. Energy is a density assumption (0.35 MWdc/acre) times a ~10%-optimistic yield; effectively acreage.
-3. Grid proximity ignores capacity — the true bottleneck for NC interconnection.
-4. Usable-area slope threshold (10%) is a product choice; results sensitive at 5%.
-5. Wetlands and flood are missing; OSM wetlands must not be presented as wetland screening.
-6. Whole-site mean slope partially overlaps the usable-area slope exclusion (steep land already
-   reduced MWh); acceptable because it measures site ruggedness (access, grading, stormwater) and is
-   empirically independent, but it should be labelled "site ruggedness", not "build cost".
-7. DEM date vs current landform for active landfills/quarries.
-
-## Recommended final objectives
-
-Within a user-selected project-size band (default 10–40 MWac est.):
-
-1. **Maximise `estimated_annual_mwh`** — labelled "estimated annual generation (≈ buildable size)".
-2. **Minimise `grid_line_distance_km`** — "distance to mapped ≥ 69 kV line (OSM)".
-3. **Minimise `mean_slope_deg`** — "site ruggedness (mean slope)"; user can switch it off (→ 2-objective view).
-
-Substation distance is shown, not optimised (correlated with line distance, sparser tagging).
-
-## Recommended constraints
-
-* `usable_area_acres >= 10` (adjustable).
-* Usable-area pixel exclusions: slope > 10% (switchable 5/10/15), open water, mapped wetland.
-* Exclude sites with existing solar (OSM ≥ 10% overlap or an EIA PV plant inside).
-* Scenario filters (user-set ε-constraints): project-size band, max grid distance, candidate types,
-  **"include sites with unknown operating status" (default: off for quarries)**.
-
-## Recommended context metrics
-
-`substation_distance_km`, `nearest_line_kv`, `p90_slope_deg`, `water_overlap_pct`, `road_distance_km`,
-`candidate_type`, `osm_status_hint`/operator, county, NSRDB capacity factor, the usable-area map
-layer, and — once sourced — FEMA SFHA % and NWI wetland % (context only). Informational:
-gross acres, elevation range, provenance strings.
-
-## Recommended data pipeline for the app phase
-
-```
-offline (once, cached):   download_overture -> preprocess_candidates -> download_elevation ->
-                          compute_terrain -> download_solar_resource -> download_eia -> compute_metrics
-committed artefact:       data/processed/feasibility_sites.parquet (320 KB, 268 sites, 68 columns)
-app build step:           export to GeoJSON/FlatGeobuf (simplified polygons + metrics + provenance)
-app runtime:              static files only; Pareto + filters computed client-side (n < 300)
-optional refresh:         rerun scripts; nothing in the demo calls a government API
-```
-
----
+1. **Load** `data/app/candidates.geojson` + `data/app/meta.json`. No network calls.
+2. **Scenario inputs**:
+   * target MW AC (presets 5/10/20/40, free input allowed);
+   * slope rule T ∈ {5, 10, 15}% (default 10);
+   * exclude NWI from usable area (default on);
+   * scenario: brownfields (default) / landfills / quarries;
+   * optional caps: max grid km, max NWI %.
+3. **Funnel**: status/type filter → `usable_acres_slope{T}[_nwi_not_excluded] >= target / 0.28` →
+   objective values present and caps → Pareto.
+4. **Pareto**: minimise `grid_line_distance_km` and `usable_mean_slope_deg_slope{T}`. Strict dominance;
+   missing values excluded; non-dominated ranks 1..n; example dominator plus a raw-unit explanation
+   sentence. No weights, scores, knee points or "best" label.
+5. **Context per site**: EPA panel (`epa_*`, labelled "EPA screening, historical") kept separate from
+   the SolarSight panel. Target generation = target MW AC × `annual_mwh_per_mw_ac`. Warnings come from
+   `meta.warnings`. FEMA shows "not assessed"; AEC shows "not available".
 
 ## Decision
 
-## GO WITH MODIFICATIONS
+## READY WITH KNOWN GAPS
 
-The real-data pipeline works end-to-end with real, cached, provenance-tracked data, and Pareto
-produces small, explainable frontiers. But the evidence changes the product in five ways:
+The core analysis is defensible:
+* authoritative current polygons with an exact EPA ID join;
+* validated current transmission proximity;
+* tested terrain;
+* explicit, unit-consistent project sizing;
+* correct, tested Pareto with explanations.
 
-1. **Treat project size as a user-chosen band (ε-constraint), not a global objective.** Across all
-   sites, "max MWh" is "max acreage" (R² = 0.9995) and the frontier collapses to the five largest
-   sites. Within bands, MWh / grid distance / slope are independent and the frontiers are meaningful.
-2. **Make slope do double duty honestly:** pixel slope > 10% removes land from usable area (feeds MWh);
-   whole-site mean slope is an optional third objective labelled "ruggedness". Disturbed land is not flat.
-3. **Surface operating-status uncertainty.** Default the demo to landfills + brownfields + quarries
-   tagged inactive, with a toggle for unknown-status quarries; never present an operating mine as a
-   ready site.
-4. **No "best"/"balanced" badge.** Knee points were unstable under rescaling; use the tradeoff ladder
-   and dominance explanations instead.
-5. **Close the data gaps before claiming environmental screening:** load EPA RE-Powering (authority
-   and status), USFWS NWI (wetlands) and FEMA NFHL (flood) from an unrestricted network. Until then,
-   the UI must show them as "not yet assessed", not as zero.
+Known non-blocking gaps, all represented as unknown or not assessed in the data:
+* **Should fix before demo**: FEMA flood (if time).
+* **Nice to have**: DEQ AEC polygons, pavement detection.
+* **Post-hackathon**: site availability/ownership, landfill cell-level status, current NWI, grid capacity.
+
+One product caveat must stay visible: the frontier is small (2) because the data contain few real
+tradeoffs. The UI should present ranks 1–3 and the "dominated because…" explanations, not just the frontier.
