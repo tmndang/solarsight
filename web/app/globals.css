@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+/*
+ * SolarSight design tokens (docs/UI_SPEC.md §3). Every color in the app comes from here.
+ * Salient pair (frontier/alternative) validated for CVD separation and contrast on --surface.
+ */
+:root {
+  --background: #0a1016;
+  --surface: #0e151c;
+  --surface-raised: #151f28;
+  --surface-sunken: #0b1218;
+  --border: #22303c;
+  --border-strong: #33434f;
+  --text-primary: #e6edf3;
+  --text-secondary: #a9b6c2;
+  --text-muted: #71808e;
+  --accent: #3aa0d0;
+  --pareto-frontier: #c4862a;
+  --pareto-alternative: #2e9bba;
+  --candidate-feasible: #8a99a8;
+  --candidate-screened: #3d4955;
+  --selected: #f2f5f7;
+  --warning: #d9a441;
+  --danger: #e5735f;
+  --success: #6fb58a;
+  --source-epa: #8c7bd1;
+  --source-derived: #3aa0d0;
+  --source-deq: #6fb58a;
+  --chart-grid: #1c2731;
+  --shadow-raised: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-accent: var(--accent);
+  --color-frontier: var(--pareto-frontier);
+  --color-alternative: var(--pareto-alternative);
+  --color-feasible: var(--candidate-feasible);
+  --color-screened: var(--candidate-screened);
+  --color-selected: var(--selected);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-source-epa: var(--source-epa);
+  --color-source-derived: var(--source-derived);
+  --color-source-deq: var(--source-deq);
+  --color-chart-grid: var(--chart-grid);
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --shadow-raised: var(--shadow-raised);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--background);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Typography roles (UI_SPEC §3) */
+@utility section-title {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+@utility metric-value {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+@utility metric-label {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+@utility meta-text {
+  font-size: 11px;
+  line-height: 14px;
+  color: var(--text-muted);
+}
+
+/* MapLibre chrome on dark */
+.maplibregl-ctrl-attrib {
+  background: rgb(14 21 28 / 0.75) !important;
+  color: var(--text-muted) !important;
+  font-size: 10px;
+}
+.maplibregl-ctrl-attrib a {
+  color: var(--text-secondary) !important;
+}
+.maplibregl-ctrl-group {
+  background: var(--surface-raised) !important;
+  border: 1px solid var(--border) !important;
+}
+.maplibregl-ctrl-group button + button {
+  border-top: 1px solid var(--border) !important;
+}
+.maplibregl-ctrl-icon {
+  filter: invert(0.85);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+  }
+}
