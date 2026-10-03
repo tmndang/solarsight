@@ -38,11 +38,12 @@ def main():
                                    "size_feasible": f["large_enough"], "screen_eligible": f["screen_eligible"],
                                    "frontier": f["pareto_optimal"]},
                         "ranks": {sid: int(rk) for sid, rk in zip(e.site_id, e.pareto_rank)},
-                        "example_dominator": {sid: dm for sid, dm in zip(e.site_id, e.example_dominator) if dm},
+                        "example_dominator": {sid: dm for sid, dm in zip(e.site_id, e.example_dominator)
+                                              if isinstance(dm, str)},  # NaN (no dominator) is truthy
                     })
     out = ROOT / "data" / "app" / "fixtures"
     out.mkdir(parents=True, exist_ok=True)
-    (out / "scenario_expected.json").write_text(json.dumps({"cases": cases}, indent=0))
+    (out / "scenario_expected.json").write_text(json.dumps({"cases": cases}, indent=0, allow_nan=False))
     print(f"{len(cases)} scenario cases written")
 
 

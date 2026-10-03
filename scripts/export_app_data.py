@@ -29,9 +29,9 @@ def main():
     assert not missing, missing
     g = d[cols + ["geometry"]].copy()
     g["geometry"] = g.to_crs(METRIC_CRS).geometry.simplify(SIMPLIFY_M, preserve_topology=True).to_crs(4326).values
-    for c in cols:
-        if pd.api.types.is_float_dtype(g[c]):
-            g[c] = g[c].round(4)
+    # Numeric properties are exported at FULL precision: the browser re-runs the Pareto engine and
+    # must see the same values as the Python reference (rounding to 4 dp once turned 0.81038 vs
+    # 0.81040 into a tie and changed dominance tie-breaks).
     # NaN in float columns is written as JSON null by GDAL; do NOT replace with None (that turns the
     # column into object dtype and GDAL then writes every value as a string).
     g.to_file(APP / "candidates.geojson", driver="GeoJSON", COORDINATE_PRECISION=6)
