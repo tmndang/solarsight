@@ -7,6 +7,7 @@ import { ScenarioSummary } from "./scenario-summary";
 import { ScreeningRail } from "@/components/controls/screening-rail";
 import { SitePanel } from "@/components/site/site-panel";
 import { BottomPanel } from "@/components/tradeoffs/bottom-panel";
+import { MethodologySheet } from "@/components/methodology/methodology-sheet";
 import dynamic from "next/dynamic";
 
 // MapLibre touches window: load client-only.
@@ -43,6 +44,7 @@ function Workspace() {
           <SitePanel />
         </aside>
       </main>
+      <MethodologySheet />
     </div>
   );
 }

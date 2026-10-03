@@ -22,11 +22,14 @@ export function SitePanel() {
 
   // Esc clears the selection (unless a dialog is open; Radix handles Esc there)
   useEffect(() => {
+    // capture phase runs before Radix's dialog handler, so an open dialog is still in the DOM here
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !methodologyOpen && selectedId) select(null);
+      if (e.key !== "Escape" || !selectedId) return;
+      if (methodologyOpen || document.querySelector('[role="dialog"], [role="listbox"]')) return;
+      select(null);
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [methodologyOpen, selectedId, select]);
 
   if (!c || !res) return <SiteEmptyState />;
