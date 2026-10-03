@@ -5,7 +5,7 @@ import { AppHeader } from "./app-header";
 import { DataGate } from "./data-gate";
 import { ScenarioSummary } from "./scenario-summary";
 import { ScreeningRail } from "@/components/controls/screening-rail";
-import { SiteEmptyState } from "@/components/site/site-empty-state";
+import { SitePanel } from "@/components/site/site-panel";
 import dynamic from "next/dynamic";
 
 // MapLibre touches window: load client-only.
@@ -38,7 +38,7 @@ function Workspace() {
           <div className="border-t border-border bg-surface" />
         </section>
         <aside aria-label="Selected site" className="min-h-0 overflow-y-auto border-l border-border bg-surface max-[1279px]:hidden">
-          <SiteEmptyState />
+          <SitePanel />
         </aside>
       </main>
     </div>

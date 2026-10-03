@@ -1,4 +1,5 @@
 "use client";
+import { useEffect } from "react";
 import { useApp } from "@/store/app-store";
 import { useLoadData } from "@/lib/data/load";
 import { Button } from "@/components/ui/primitives";
@@ -9,6 +10,16 @@ export function DataGate({ children }: { children: React.ReactNode }) {
   useLoadData();
   const status = useApp((s) => s.data.status);
   const error = useApp((s) => s.data.error);
+  // Deep link: ?mw=20&site=DEQ-02005-98-007 (applied once after data load; unknown values ignored)
+  useEffect(() => {
+    if (status !== "ready") return;
+    const q = new URLSearchParams(window.location.search);
+    const st = useApp.getState();
+    const mw = Number(q.get("mw"));
+    if ([5, 10, 20, 40].includes(mw)) st.setScenario({ targetMwAc: mw });
+    const site = q.get("site");
+    if (site && st.data.byId.has(site)) st.select(site, { fly: true });
+  }, [status]);
   if (status === "ready") return <>{children}</>;
   return (
     <div className="flex h-dvh items-center justify-center bg-background">

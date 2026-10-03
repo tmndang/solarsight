@@ -130,7 +130,7 @@ describe("explanations", () => {
     expect(e.dominatorId).toBe("DEQ-02005-98-007");
     expect(e.comparisons.map((c) => c.relation)).toEqual(["better", "better"]);
     expect(e.comparisons[0].text).toMatch(/^0\.03 km closer to mapped ≥69 kV transmission \(0\.03 km vs 0\.06 km\)$/);
-    expect(e.comparisons[1].text).toMatch(/^0\.3° flatter usable land/);
+    expect(e.comparisons[1].text).toBe("0.34° flatter on usable land (0.42° vs 0.76°)");
   });
   it("equal objective is described as the same, not as better", () => {
     const r = computeScenario(props, meta, DEFAULT_SCENARIO);

@@ -4,7 +4,10 @@
  */
 import type { CandidateProps } from "@/lib/data/schema";
 import type { ScenarioResult } from "@/lib/scenario/scenario";
-import { fmtDeg, fmtKm } from "@/lib/formatting/format";
+import { fmtKm } from "@/lib/formatting/format";
+
+/** Explanations compare small differences: always 2 dp in degrees so 0.34° is not shown as 0.3°. */
+const fmtDeg2 = (v: number) => v.toFixed(2) + "°";
 
 export type Relation = "better" | "equal" | "worse";
 
@@ -27,7 +30,7 @@ export interface DominanceExplanation {
 
 const PHRASES: Record<string, { better: string; same: string; fmt: (v: number) => string; unit: string }> = {
   grid_line_distance_km: { better: "closer to mapped ≥69 kV transmission", same: "the same distance to mapped transmission", fmt: fmtKm, unit: "km" },
-  terrain: { better: "flatter usable land (mean slope)", same: "the same mean slope of usable land", fmt: fmtDeg, unit: "°" },
+  terrain: { better: "flatter on usable land", same: "the same mean slope of usable land", fmt: fmtDeg2, unit: "°" },
 };
 
 function phraseFor(key: string) {
@@ -39,7 +42,7 @@ function fmtAdvantage(adv: number, key: string): string {
   const p = phraseFor(key);
   const shown = p.fmt(adv);
   const zeroShown = Number.parseFloat(shown) === 0;
-  return zeroShown ? `slightly ${p.better} (< ${p.unit === "km" ? "0.01 km" : "0.1°"})` : `${shown} ${p.better}`;
+  return zeroShown ? `slightly ${p.better} (< ${p.unit === "km" ? "0.01 km" : "0.01°"})` : `${shown} ${p.better}`;
 }
 
 export function compareOnObjectives(dom: CandidateProps, site: CandidateProps, keys: string[]): ObjectiveComparison[] {
