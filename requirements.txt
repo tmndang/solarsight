@@ -1,0 +1,16 @@
+geopandas>=1.0
+shapely>=2.0
+pyproj
+rasterio>=1.4
+numpy
+pandas
+pyarrow
+scipy
+duckdb>=1.1
+h5py
+fsspec
+aiohttp
+nrel-pysam
+requests
+matplotlib
+pytest
