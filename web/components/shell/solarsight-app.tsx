@@ -6,6 +6,7 @@ import { DataGate } from "./data-gate";
 import { ScenarioSummary } from "./scenario-summary";
 import { ScreeningRail } from "@/components/controls/screening-rail";
 import { SitePanel } from "@/components/site/site-panel";
+import { BottomPanel } from "@/components/tradeoffs/bottom-panel";
 import dynamic from "next/dynamic";
 
 // MapLibre touches window: load client-only.
@@ -26,6 +27,7 @@ export function SolarSightApp() {
 
 function Workspace() {
   const setMethodologyOpen = useApp((s) => s.setMethodologyOpen);
+  const bottomOpen = useApp((s) => s.bottomOpen);
   return (
     <div className="grid h-dvh grid-rows-[56px_minmax(0,1fr)] bg-background">
       <AppHeader summary={<ScenarioSummary />} onMethodology={() => setMethodologyOpen(true)} />
@@ -33,9 +35,9 @@ function Workspace() {
         <aside aria-label="Project and screening" className="min-h-0 overflow-y-auto border-r border-border bg-surface">
           <ScreeningRail />
         </aside>
-        <section aria-label="Map and tradeoffs" className="grid min-h-0 grid-rows-[minmax(0,1fr)_280px]">
+        <section aria-label="Map and tradeoffs" className={`grid min-h-0 ${bottomOpen ? "grid-rows-[minmax(0,1fr)_280px]" : "grid-rows-[minmax(0,1fr)_37px]"}`}>
           <div className="relative min-h-0 bg-surface-sunken"><SolarMap /></div>
-          <div className="border-t border-border bg-surface" />
+          <div className="min-h-0 border-t border-border bg-surface"><BottomPanel /></div>
         </section>
         <aside aria-label="Selected site" className="min-h-0 overflow-y-auto border-l border-border bg-surface max-[1279px]:hidden">
           <SitePanel />

@@ -67,7 +67,12 @@ export const useApp = create<AppState>((set) => ({
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
   setShowScreened: (showScreened) => set({ showScreened }),
   select: (id, opts) => set((s) => ({ selectedId: id, flyToken: opts?.fly ? s.flyToken + 1 : s.flyToken })),
-  hover: (id, source = "map") => set({ hovered: id ? { id, source } : null }),
+  hover: (id, source = "map") => set((s) => {
+    const cur = s.hovered;
+    if (!id) return cur ? { hovered: null } : {};
+    if (cur && cur.id === id && cur.source === source) return {}; // no-op: avoids re-render loops
+    return { hovered: { id, source } };
+  }),
   toggleCompare: (id) => set((s) => {
     if (s.compareIds.includes(id)) return { compareIds: s.compareIds.filter((x) => x !== id) };
     if (s.compareIds.length >= MAX_COMPARE) return {};
