@@ -56,8 +56,12 @@ Implementation (`src/analysis/pareto.py`):
 * exact duplicates do not dominate each other;
 * returns status, non-dominated-sorting rank, number of dominators, an example dominator (a frontier
   member when possible, else the dominator better on most objectives) and raw-unit differences;
-* `explain()` produces sentences like *"NC-LA-031 is dominated by NC-LA-002: higher estimated annual
-  generation (…), lower distance to mapped >=69 kV line (…)."*;
+* `explain()` produces sentences like (real output) *"NC-BR-013 is dominated by NC-LA-035: higher
+  estimated annual generation (41,945 vs 12,054 MWh/yr), lower distance to mapped >=69 kV line
+  (0.34 vs 1.18 km), lower mean slope (0.5 vs 0.6 deg)."*;
+* recommended use: run Pareto **inside a user-selected project-size band** and other explicit
+  filters (ε-constraints); across all sizes the frontier collapses to the largest sites (see
+  DATA_FEASIBILITY.md);
 * `tradeoff_ladder()` lists neighbouring frontier points with the exchange rate in raw units
   (MWh gained per extra km) — no normalisation needed.
 
