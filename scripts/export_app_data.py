@@ -12,7 +12,7 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 
-from _common import ROOT, PROCESSED, METRIC_CRS
+from _common import ROOT, RAW, PROCESSED, METRIC_CRS
 from src.analysis.assumptions import ASSUMPTIONS, ASSUMPTION_BASIS, mw_ac_per_usable_acre
 from src.analysis.schema import FIELDS, WARNINGS
 from src.analysis.status import STATUSES, DEFAULT_ELIGIBLE_STATUSES, LANDFILL_SCENARIO_STATUSES
@@ -56,6 +56,12 @@ def main():
         "warnings": WARNINGS,
     }
     (APP / "meta.json").write_text(json.dumps(meta, indent=1, default=str))
+    # Local context layer for the basemap fallback (NC counties, simplified ~200 m). Optional input.
+    cty = RAW / "nc_counties.parquet"
+    if cty.exists():
+        c = gpd.read_parquet(cty)[["name", "geometry"]].to_crs(METRIC_CRS)
+        c["geometry"] = c.geometry.simplify(200, preserve_topology=True)
+        c.to_crs(4326).to_file(APP / "context.geojson", driver="GeoJSON", COORDINATE_PRECISION=4)
     size = (APP / "candidates.geojson").stat().st_size / 1e6
     print(f"exported {len(g)} candidates, {len(cols)} fields, candidates.geojson {size:.2f} MB")
 

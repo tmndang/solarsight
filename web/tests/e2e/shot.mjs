@@ -10,7 +10,7 @@ const page = await browser.newPage({ viewport: { width: +w, height: +h } });
 const logs = [];
 page.on("console", (m) => logs.push(`[${m.type()}] ${m.text()}`));
 page.on("pageerror", (e) => logs.push(`[pageerror] ${e.message}`));
-await page.goto(url, { waitUntil: "networkidle" });
+await page.goto(url, { waitUntil: "domcontentloaded" });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: out });
 console.log(logs.join("\n"));
