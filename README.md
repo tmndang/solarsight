@@ -72,5 +72,50 @@ python analyze_foundation.py             # validation report (optional)
 cd .. && python -m pytest -q
 ```
 
+## AI usage
+
+Per the WolfHacks rules, this section cites AI use. All of it happened during the hackathon.
+
+**Tool:** [Claude Code](https://claude.com/claude-code), Anthropic's AI coding agent. It ran in a cloud session
+connected to this repository.
+
+**What the AI wrote.** Claude Code wrote and committed essentially all code and documentation in this
+repository. Its commits are authored as `Claude <noreply@anthropic.com>`. This covers:
+
+* the Python data pipeline (`scripts/`, `src/`): data downloads and ingestion, DEQ ↔ EPA matching, terrain and
+  slope analysis, NWI overlap, transmission distances, PVWatts generation estimates, Pareto analysis and the app
+  data export;
+* the Python and TypeScript tests, including the golden scenario fixtures that check the web engine against the
+  Python reference;
+* the documentation in `docs/`: data sources, methodology, feasibility and foundation audits, UI spec and
+  amendments;
+* the web app (`web/`): Next.js/React UI, map, tradeoff chart, Compare, and the TypeScript port of the scenario
+  and Pareto logic.
+
+**What the team did.**
+
+* Defined the product idea and wrote the phase-by-phase directives the AI implemented: data feasibility,
+  foundation consolidation, UI spec, frontend build, and final functionality.
+* Made the product and methodology decisions: no weighted score, Pareto layers instead of ranks, the funnel
+  wording, no line connecting frontier points, and treating a grid distance of 0 as "intersects".
+* Raised the question about how EPA measures its NC brownfield distances, which led to correcting the docs.
+* Reviewed the AI's reports and results.
+* Manually downloaded the source datasets the pipeline depends on and committed them in `data/raw/` (Git LFS):
+  * NC DEQ Brownfields geodatabase;
+  * EPA RE-Powering geodatabase and `DataRecords.csv`;
+  * USFWS NWI North Carolina geodatabase.
+
+**How AI output was checked.** The AI's output was not accepted on trust. It is checked by:
+
+* Python tests (`pytest`);
+* web unit tests, including all 72 golden scenario cases (`npm test`);
+* an end-to-end browser test of the full demo path (`npm run e2e`);
+* independent recomputation of key metrics (for example, brute-force distance checks and EPA comparisons in
+  `docs/analysis/foundation_report.md`).
+
+**No AI at runtime.** SolarSight contains no AI or LLM. Every number, classification and explanation in the app
+is computed deterministically from the local data and the documented rules. The dominance and tradeoff
+sentences are filled-in templates built from the actual values, not generated text.
+
 Data: © OpenStreetMap contributors (ODbL) via Overture Maps; NC DEQ; US EPA; USFWS NWI; USGS 3DEP;
 NREL NSRDB; EIA via Catalyst Cooperative PUDL (CC-BY-4.0).
