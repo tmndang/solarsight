@@ -98,6 +98,26 @@ export function candidateLayers(showScreened: boolean): SourcedLayer[] {
   ];
 }
 
+/**
+ * Selected-site transmission context (source "sel-ctx": the selected polygon + its grid_context features).
+ * Mapped ≥69 kV lines use a violet that no candidate state uses; the dashed connector is the measured
+ * shortest boundary-to-line distance (absent when a line intersects the boundary). Drawn under the points.
+ */
+export const GRID_LINE_COLOR = "#c084fc";
+const role = (r: string) => ["==", ["get", "role"], r] as never;
+export const SELECTED_CONTEXT_LAYERS: LineLayerSpecification[] = [
+  { id: "sel-site", type: "line", source: "sel-ctx", filter: role("site"),
+    paint: { "line-color": "#f2f5f7", "line-width": 2, "line-opacity": 0.95 } },
+  { id: "sel-grid-casing", type: "line", source: "sel-ctx", filter: role("line"),
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": "#0a1016", "line-width": ["case", ["get", "nearest"], 6, 4.5] as never, "line-opacity": 0.85 } },
+  { id: "sel-grid-line", type: "line", source: "sel-ctx", filter: role("line"),
+    layout: { "line-cap": "round", "line-join": "round" },
+    paint: { "line-color": GRID_LINE_COLOR, "line-width": ["case", ["get", "nearest"], 2.8, 1.8] as never } },
+  { id: "sel-connector", type: "line", source: "sel-ctx", filter: role("connector"),
+    paint: { "line-color": "#f2f5f7", "line-width": 1.6, "line-dasharray": [2, 1.5] } },
+];
+
 export const LABEL_LAYER: SymbolLayerSpecification = {
   id: "label", type: "symbol", source: "cand-label",
   layout: {

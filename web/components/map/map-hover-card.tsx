@@ -2,7 +2,7 @@
 import { useApp } from "@/store/app-store";
 import { useScenarioResult } from "@/lib/data/load";
 import { STATE_LABEL, StatusGlyph } from "@/components/shared/status";
-import { fmtAc, fmtDeg, fmtKm, fmtMwShort } from "@/lib/formatting/format";
+import { GRID_INTERSECTS, fmtAc, fmtDeg, fmtKm, fmtMwShort } from "@/lib/formatting/format";
 
 /** Just enough to decide whether to click (UI_SPEC §13). */
 export function MapHoverCard({ id, x, y }: { id: string; x: number; y: number }) {
@@ -30,10 +30,17 @@ export function MapHoverCard({ id, x, y }: { id: string; x: number; y: number })
           <dt className="text-text-secondary">{r.sizeFeasible ? `Fits ${mw} MW AC` : `Doesn't fit ${mw} MW AC`}</dt>
           <dd className="font-mono text-text-primary">{r.usableAcres !== null ? `${fmtAc(r.usableAcres)} / ${res.requiredAcres.toFixed(1)}` : "—"}</dd>
         </div>
-        <div className="flex justify-between gap-2">
-          <dt className="text-text-secondary">Mapped ≥69 kV line</dt>
-          <dd className="font-mono text-text-primary">{c.grid_line_distance_km !== null ? fmtKm(c.grid_line_distance_km) : "not available"}</dd>
-        </div>
+        {c.grid_line_distance_km === 0 ? (
+          <div>
+            <dt className="sr-only">Mapped ≥69 kV line</dt>
+            <dd className="text-text-primary">{GRID_INTERSECTS}</dd>
+          </div>
+        ) : (
+          <div className="flex justify-between gap-2">
+            <dt className="text-text-secondary">Mapped ≥69 kV line</dt>
+            <dd className="font-mono text-text-primary">{c.grid_line_distance_km !== null ? fmtKm(c.grid_line_distance_km) : "not available"}</dd>
+          </div>
+        )}
         <div className="flex justify-between gap-2">
           <dt className="text-text-secondary">Mean usable slope</dt>
           <dd className="font-mono text-text-primary">{slope !== null ? fmtDeg(slope) : "not available"}</dd>

@@ -176,7 +176,7 @@ Visual hierarchy: map → screening controls → selected site → tradeoffs →
 │ SCREENING     │                                               │  ◆ Singer Site    │
 │ Exclude terrain steeper than ⓘ                                │    0.03 km · 0.4° │
 │ [5%][10%][15%] grade                                          │  ◆ WestPoint Home │
-│ Mapped wetlands ⓘ                                             │    0.00 km · 0.8° │
+│ Mapped wetlands ⓘ                                             │  line intersects… │
 │ (●) Exclude NWI-mapped areas from usable land                 │                   │
 │ Candidate set │                                               │  STRONG ALTERNA-  │
 │ (Brownfields ▾)                               ┌legend────────┐│  TIVES (6)        │
@@ -278,7 +278,8 @@ Visual hierarchy: map → screening controls → selected site → tradeoffs →
 ```
 
 The text is generated from objective deltas only:
-* `diff == 0` → "the same distance to mapped transmission (both 0.00 km)";
+* `diff == 0` → "the same distance to mapped transmission (both 0.50 km)"; when both are 0 →
+  "a mapped ≥69 kV line intersecting its boundary, as does this site" (amendment A1);
 * a raw difference that rounds to zero → "slightly closer (< 0.01 km)".
 
 The dominator is computed exactly as in Python: prefer a frontier member, then the most
@@ -362,7 +363,7 @@ selection ring; the scatter shows a dashed hollow marker labelled "not feasible"
 │ ▸ Project-size feasibility (0.35 MW DC = 0.28 MW AC  │
 │   per usable acre; table 5/10/20/40 MW → acres)      │
 │ ▸ Terrain (3DEP 10 m, Horn slope, % grade vs degrees)│
-│ ▸ Grid proximity (OSM ≥69 kV, polygon edge; vs EPA)  │
+│ ▸ Grid proximity (OSM ≥69 kV, boundary-to-line; vs EPA)│
 │ ▸ Mapped wetlands (NWI 1980s imagery; switch)        │
 │ ▸ Pareto frontier & strong alternatives              │
 │ ▸ Assumptions (rendered from meta.assumption_basis)  │
@@ -716,3 +717,22 @@ Avoid in the main path: Dorothea Dix Park (a city park; use only to illustrate "
   * DEQ status is shown verbatim;
   * FEMA always shows "not assessed";
   * no score, rank number, "best" or knee label.
+
+## Amendment A1 — zero grid distance is a geometric state (post-freeze)
+
+* **Meaning:** `grid_line_distance_km === 0` means a mapped ≥69 kV line intersects the site boundary.
+* **Text:** it is never shown as "0.00 km". The UI shows "Mapped ≥69 kV line intersects site
+  boundary", or "Intersects site boundary" under a "Mapped ≥69 kV line" label.
+* **Explanations:** dominance text says "a mapped ≥69 kV line intersecting its boundary…".
+* **Tradeoff chart:** these sites keep their true x = 0, and the zero tick reads "Intersects".
+* **Selected site on the map:**
+  * the site outline at every zoom;
+  * the nearest mapped ≥69 kV line plus any line crossing the site, violet `#c084fc` with a dark casing;
+  * when the distance is above zero, a dashed connector for the measured shortest boundary-to-line segment;
+  * legend rows while a site is selected;
+  * "Show on map" in the site panel frames the site and the line.
+* **Data:** from `data/app/grid_context.geojson`, which is display only and optional. If it is missing,
+  the panel says "Line geometry unavailable."
+* **Methodology:** states that grid distance is polygon-boundary-to-line and only a proximity
+  screening proxy. EPA's NC brownfield distances are described as boundary-based, not point-based.
+* **Pareto:** the calculation is unchanged. Zero-distance sites are ties on that objective.

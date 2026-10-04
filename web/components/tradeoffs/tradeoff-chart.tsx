@@ -2,6 +2,8 @@
 /**
  * Tradeoff scatter: x = distance to mapped ≥69 kV line (√ scale), y = mean slope of usable land (°).
  * Points are discrete candidates — no line connects frontier sites (no implied intermediate options).
+ * x = 0 is a geometric state (a mapped line intersects the site boundary): points keep their true x of 0 and the
+ * zero tick reads "Intersects"; text never says "0.00 km".
  * Hover/selection are shared with the map through the store. Shape renderers are module-level and
  * read everything from the point payload, so hovering never remounts points.
  */
@@ -11,7 +13,7 @@ import { useApp } from "@/store/app-store";
 import { useScenarioResult } from "@/lib/data/load";
 import type { UiState } from "@/lib/scenario/scenario";
 import { STATE_COLOR, STATE_LABEL } from "@/components/shared/status";
-import { fmtDeg, fmtKm } from "@/lib/formatting/format";
+import { GRID_INTERSECTS, fmtDeg, fmtGridValue } from "@/lib/formatting/format";
 
 interface Pt { id: string; name: string; x: number; y: number; state: UiState; infeasible?: boolean; sel?: boolean; hov?: boolean; label?: string; dy?: number }
 interface ShapeProps { cx?: number; cy?: number; payload: Pt }
@@ -37,7 +39,7 @@ function PointShape({ cx, cy, payload }: ShapeProps) {
     <g
       role="button"
       tabIndex={-1}
-      aria-label={`${payload.name}: ${payload.infeasible ? "doesn't fit this project" : STATE_LABEL[payload.state]}, ${payload.x.toFixed(2)} km, ${payload.y.toFixed(2)}°`}
+      aria-label={`${payload.name}: ${payload.infeasible ? "doesn't fit this project" : STATE_LABEL[payload.state]}, ${payload.x === 0 ? "mapped ≥69 kV line intersects site boundary" : `${payload.x.toFixed(2)} km`}, ${payload.y.toFixed(2)}°`}
       style={{ cursor: "pointer" }}
       onMouseEnter={() => useApp.getState().hover(payload.id, "chart")}
       onMouseLeave={() => { if (useApp.getState().hovered?.source === "chart") hover(null); }}
@@ -116,7 +118,7 @@ export function TradeoffChart() {
   }, [all, selectedId, base, extra]);
   const rings = useMemo(() => all.filter((p) => p.id === selectedId || p.id === hoverId).map((p) => ({
     ...p, sel: p.id === selectedId, hov: p.id === hoverId,
-    label: `${p.name} · ${fmtKm(p.x)} · ${fmtDeg(p.y)}`,
+    label: `${p.name} · ${p.x === 0 ? GRID_INTERSECTS : fmtGridValue(p.x)} · ${fmtDeg(p.y)}`,
   })), [all, selectedId, hoverId]);
 
   if (!res) return null;
@@ -134,9 +136,9 @@ export function TradeoffChart() {
         <ScatterChart margin={{ top: 14, right: 28, bottom: 30, left: 8 }}>
           <CartesianGrid stroke="var(--chart-grid)" />
           <XAxis type="number" dataKey="x" scale="sqrt" domain={[0, xDomainMax]} ticks={ticks}
-            tickFormatter={(v: number) => (v < 1 && v > 0 ? v.toFixed(2) : String(v))}
+            tickFormatter={(v: number) => (v === 0 ? "Intersects" : v < 1 ? v.toFixed(2) : String(v))}
             stroke="var(--border-strong)" tick={{ fill: "var(--text-muted)", fontSize: 11 }}
-            label={{ value: "Distance to mapped ≥69 kV transmission line (km, √ scale)", position: "insideBottom", offset: -18, fill: "var(--text-secondary)", fontSize: 11 }} />
+            label={{ value: "Site boundary to mapped ≥69 kV line (km, √ scale)", position: "insideBottom", offset: -18, fill: "var(--text-secondary)", fontSize: 11 }} />
           <YAxis type="number" dataKey="y" domain={[0, yDomainMax]} stroke="var(--border-strong)" width={48}
             tick={{ fill: "var(--text-muted)", fontSize: 11 }} tickFormatter={(v: number) => `${v}°`}
             label={{ value: "Mean slope of usable land (°)", angle: -90, position: "insideLeft", offset: 12, dy: 80, fill: "var(--text-secondary)", fontSize: 11 }} />
@@ -147,9 +149,9 @@ export function TradeoffChart() {
       </ResponsiveContainer>
       <p className="pointer-events-none absolute right-8 top-1 text-[10px] text-text-muted">← closer to transmission · ↓ flatter usable land</p>
       <div className="sr-only"><table>
-        <caption>Feasible sites plotted by distance to mapped transmission and mean slope of usable land</caption>
+        <caption>Feasible sites plotted by site-boundary distance to mapped ≥69 kV transmission (0 = line intersects the boundary) and mean slope of usable land</caption>
         <thead><tr><th>Site</th><th>Tradeoff state</th><th>Distance (km)</th><th>Usable-land slope (°)</th></tr></thead>
-        <tbody>{base.points.map((p) => <tr key={p.id}><td>{p.name}</td><td>{STATE_LABEL[p.state]}</td><td>{p.x.toFixed(2)}</td><td>{p.y.toFixed(2)}</td></tr>)}</tbody>
+        <tbody>{base.points.map((p) => <tr key={p.id}><td>{p.name}</td><td>{STATE_LABEL[p.state]}</td><td>{p.x === 0 ? "0 (line intersects site boundary)" : p.x.toFixed(2)}</td><td>{p.y.toFixed(2)}</td></tr>)}</tbody>
       </table></div>
     </div>
   );

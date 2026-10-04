@@ -3,7 +3,7 @@ import { MousePointerClick } from "lucide-react";
 import { useApp } from "@/store/app-store";
 import { useScenarioResult } from "@/lib/data/load";
 import { StatusGlyph } from "@/components/shared/status";
-import { fmtDeg, fmtKm } from "@/lib/formatting/format";
+import { fmtDeg, fmtGridPhrase } from "@/lib/formatting/format";
 import type { UiState } from "@/lib/scenario/scenario";
 
 function QuickList({ title, ids, state }: { title: string; ids: string[]; state: UiState }) {
@@ -35,7 +35,7 @@ function QuickList({ title, ids, state }: { title: string; ids: string[]; state:
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-medium text-text-primary">{c.name}</span>
                   <span className="meta-text">
-                    {c.county} Co. · {c.grid_line_distance_km !== null ? fmtKm(c.grid_line_distance_km) : "—"} to line ·{" "}
+                    {c.county} Co. · {c.grid_line_distance_km !== null ? fmtGridPhrase(c.grid_line_distance_km) : "transmission distance not available"} ·{" "}
                     {slope !== null ? fmtDeg(slope) : "—"} usable slope
                   </span>
                 </span>

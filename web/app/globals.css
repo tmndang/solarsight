@@ -20,6 +20,8 @@
   --candidate-feasible: #8a99a8;
   --candidate-screened: #3d4955;
   --selected: #f2f5f7;
+  /* selected-site mapped ≥69 kV line (map + legend); no candidate state uses violet */
+  --grid-line: #c084fc;
   --warning: #d9a441;
   --danger: #e5735f;
   --success: #6fb58a;
@@ -46,6 +48,7 @@
   --color-feasible: var(--candidate-feasible);
   --color-screened: var(--candidate-screened);
   --color-selected: var(--selected);
+  --color-grid-line: var(--grid-line);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-success: var(--success);

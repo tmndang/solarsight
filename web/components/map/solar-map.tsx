@@ -11,7 +11,7 @@ import { setWorkerUrl, type Map as MaplibreMap } from "maplibre-gl";
 import { useApp } from "@/store/app-store";
 import { useScenarioResult } from "@/lib/data/load";
 import { CARTO_DARK, DIAMOND_ICON, FALLBACK_STYLE, INTERACTIVE_LAYERS, LABEL_LAYER, NC_BOUNDS,
-  candidateLayers, makeDiamond } from "./map-style";
+  SELECTED_CONTEXT_LAYERS, candidateLayers, makeDiamond } from "./map-style";
 import { MapHoverCard } from "./map-hover-card";
 import { MapLegend } from "./map-legend";
 import { NoResultsOverlay } from "./no-results-overlay";
@@ -22,6 +22,20 @@ setWorkerUrl(`${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/maplibre/maplibre-gl-wo
 const prefersReducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
+/** Camera padding that keeps targets clear of the site panel when it overlays the map (< 1280 px). */
+function overlayPadding(m: MaplibreMap) {
+  const c = m.getContainer(), w = c.clientWidth, h = c.clientHeight, vw = window.innerWidth;
+  return { top: 40, left: 40, right: vw < 1024 ? 40 : vw < 1280 ? Math.min(420, w / 2) : 40,
+    bottom: vw < 1024 ? Math.min(h * 0.6, h - 80) : 40 };
+}
+
+function extendBounds(b: [number, number, number, number], coords: unknown): void {
+  if (Array.isArray(coords) && typeof coords[0] === "number") {
+    const [x, y] = coords as number[];
+    b[0] = Math.min(b[0], x); b[1] = Math.min(b[1], y); b[2] = Math.max(b[2], x); b[3] = Math.max(b[3], y);
+  } else if (Array.isArray(coords)) for (const c of coords) extendBounds(b, c);
+}
+
 export default function SolarMap() {
   const mapRef = useRef<MapRef>(null);
   const features = useApp((s) => s.data.features);
@@ -30,6 +44,8 @@ export default function SolarMap() {
   const selectedId = useApp((s) => s.selectedId);
   const hovered = useApp((s) => s.hovered);
   const flyToken = useApp((s) => s.flyToken);
+  const fitToken = useApp((s) => s.fitToken);
+  const gridContext = useApp((s) => s.gridContext);
   const select = useApp((s) => s.select);
   const hover = useApp((s) => s.hover);
   const basemap = useApp((s) => s.basemap);
@@ -82,6 +98,16 @@ export default function SolarMap() {
     } as FeatureCollection;
   }, [res, selectedId, byId]);
 
+  // selected site outline (visible at every zoom) + its transmission context; tiny, rebuilt per selection
+  const selCtxData = useMemo(() => {
+    const fc: FeatureCollection = { type: "FeatureCollection", features: [] };
+    if (!selectedId) return fc;
+    const site = features.find((f) => f.properties.site_id === selectedId);
+    if (site) fc.features.push({ type: "Feature", geometry: site.geometry, properties: { role: "site" } });
+    for (const f of gridContext.bySite.get(selectedId) ?? []) fc.features.push(f as FeatureCollection["features"][number]);
+    return fc;
+  }, [selectedId, features, gridContext]);
+
   // ---- basemap loading / fallback ----------------------------------------------------
   const [style, setStyle] = useState<string | typeof FALLBACK_STYLE>(CARTO_DARK);
   const fallBack = useCallback(() => {
@@ -123,14 +149,24 @@ export default function SolarMap() {
     if (!m || !p) return;
     const ll: [number, number] = [p.longitude, p.latitude];
     // below 1280 px the site panel overlays the map (right edge; bottom below 1024) — keep the site clear of it
-    const c = m.getContainer(), w = c.clientWidth, h = c.clientHeight, vw = window.innerWidth;
-    const padding = { top: 40, left: 40, right: vw < 1024 ? 40 : vw < 1280 ? Math.min(420, w / 2) : 40, bottom: vw < 1024 ? Math.min(h * 0.6, h - 80) : 40 };
+    const c = m.getContainer(), w = c.clientWidth, h = c.clientHeight;
+    const padding = overlayPadding(m);
     const pt = m.project(ll);
     const clear = pt.x >= padding.left && pt.x <= w - padding.right && pt.y >= padding.top && pt.y <= h - padding.bottom;
     if (clear && m.getZoom() >= 7) return;
     const opts = { center: ll, zoom: Math.max(m.getZoom(), 9), padding };
     if (prefersReducedMotion()) m.jumpTo(opts); else m.flyTo({ ...opts, duration: 700 });
   }, [flyToken, mapObj]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---- camera: "show on map" frames the selected site and its transmission context ----
+  useEffect(() => {
+    if (!fitToken || !mapObj) return;
+    const b: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const f of selCtxData.features) if (f.geometry.type !== "GeometryCollection") extendBounds(b, f.geometry.coordinates);
+    if (!Number.isFinite(b[0])) return;
+    mapObj.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: overlayPadding(mapObj), maxZoom: 15.5,
+      duration: prefersReducedMotion() ? 0 : 700 });
+  }, [fitToken, mapObj]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- interaction ----------------------------------------------------------------
   const pick = (e: MapLayerMouseEvent): string | null => {
@@ -203,6 +239,11 @@ export default function SolarMap() {
         {polyData && (
           <Source id="cand-poly" type="geojson" data={polyData} promoteId="site_id">
             {candidateLayers(showScreened).filter((l) => l.source === "cand-poly").map((l) => <Layer key={l.id} {...l} />)}
+          </Source>
+        )}
+        {polyData && (
+          <Source id="sel-ctx" type="geojson" data={selCtxData}>
+            {SELECTED_CONTEXT_LAYERS.map((l) => <Layer key={l.id} {...l} />)}
           </Source>
         )}
         {pointData && (

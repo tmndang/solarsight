@@ -41,6 +41,7 @@ See [`web/README.md`](web/README.md) for structure, deep links and deviations fr
 | File | What |
 |---|---|
 | `data/app/candidates.geojson`, `data/app/meta.json` | frozen offline app dataset (662 candidates, field dictionary, assumptions, warnings) |
+| `data/app/grid_context.geojson` | display-only transmission geometry per candidate: nearest mapped ≥69 kV line and any line crossing the site, plus the shortest boundary-to-line segment |
 | `data/processed/feasibility_sites.parquet` | canonical candidate table (GeoParquet, EPSG:4326) |
 | `data/processed/deq_epa_match.parquet` | all 1,363 DEQ projects with EPA match method and confidence |
 | `data/processed/candidates.parquet`, `terrain.parquet`, `grid_proxy_validation.parquet` | intermediates |
@@ -66,6 +67,7 @@ python download_solar_resource.py meta && python download_solar_resource.py site
 python download_eia.py                   # validation only
 python compute_metrics.py                # -> feasibility_sites.parquet
 python export_app_data.py                # -> data/app/
+python export_grid_context.py            # -> data/app/grid_context.geojson (selected-site transmission geometry)
 python analyze_foundation.py             # validation report (optional)
 cd .. && python -m pytest -q
 ```

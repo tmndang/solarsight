@@ -45,6 +45,20 @@ function fmtAdvantage(adv: number, key: string): string {
   return zeroShown ? `slightly ${p.better} (< ${p.unit === "km" ? "0.01 km" : "0.01°"})` : `${shown} ${p.better}`;
 }
 
+/**
+ * Transmission wording treats 0 as a geometric state (a mapped ≥69 kV line intersects the site boundary),
+ * not "0.00 km". Ties at 0 remain ties — the Pareto comparison itself is unchanged.
+ */
+function gridText(relation: Relation, a: number, b: number, advantage: number): string {
+  if (relation === "equal") {
+    return a === 0 ? "a mapped ≥69 kV line intersecting its boundary, as does this site"
+      : `the same distance to mapped transmission (both ${fmtKm(a)})`;
+  }
+  if (relation === "better" && a === 0) return `a mapped ≥69 kV line intersecting its boundary (this site: ${fmtKm(b)} away)`;
+  if (relation === "better") return `${fmtAdvantage(advantage, "grid_line_distance_km")} (${fmtKm(a)} vs ${fmtKm(b)})`;
+  return b === 0 ? `${fmtKm(a)} vs a line intersecting this site's boundary` : `${fmtKm(a)} vs ${fmtKm(b)}`;
+}
+
 export function compareOnObjectives(dom: CandidateProps, site: CandidateProps, keys: string[]): ObjectiveComparison[] {
   return keys.map((key) => {
     const a = dom[key as keyof CandidateProps] as number;
@@ -52,9 +66,10 @@ export function compareOnObjectives(dom: CandidateProps, site: CandidateProps, k
     const advantage = b - a; // minimise: lower dominator value = advantage
     const relation: Relation = advantage > 0 ? "better" : advantage < 0 ? "worse" : "equal";
     const p = phraseFor(key);
-    const text = relation === "better"
-      ? `${fmtAdvantage(advantage, key)} (${p.fmt(a)} vs ${p.fmt(b)})`
-      : relation === "equal" ? `${p.same} (both ${p.fmt(a)})` : `${p.fmt(a)} vs ${p.fmt(b)}`;
+    const text = key === "grid_line_distance_km" ? gridText(relation, a, b, advantage)
+      : relation === "better"
+        ? `${fmtAdvantage(advantage, key)} (${p.fmt(a)} vs ${p.fmt(b)})`
+        : relation === "equal" ? `${p.same} (both ${p.fmt(a)})` : `${p.fmt(a)} vs ${p.fmt(b)}`;
     return { key, dominatorValue: a, siteValue: b, advantage, relation, text };
   });
 }

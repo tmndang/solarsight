@@ -1,14 +1,19 @@
 "use client";
 import { useEffect, useMemo } from "react";
-import { parseData } from "./schema";
+import { parseData, parseGridContext } from "./schema";
 import { useApp } from "@/store/app-store";
 import { computeScenario, type ScenarioResult } from "@/lib/scenario/scenario";
 
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
 
-/** Load the two local data files once, validate, and put them in the store. No other network data. */
+/**
+ * Load the two local data files once, validate, and put them in the store. No other network data.
+ * grid_context.geojson (selected-site transmission geometry) loads afterwards and is optional: if it is
+ * missing or invalid the app works unchanged and the site panel says the geometry is unavailable.
+ */
 export function useLoadData() {
   const setData = useApp((s) => s.setData);
+  const setGridContext = useApp((s) => s.setGridContext);
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -20,12 +25,21 @@ export function useLoadData() {
         const { candidates, meta } = parseData(c, m);
         const props = candidates.features.map((f) => f.properties);
         if (!cancelled) setData({ status: "ready", features: candidates.features, props, byId: new Map(props.map((p) => [p.site_id, p])), meta });
+        try {
+          const r = await fetch(`${BASE}/data/grid_context.geojson`);
+          if (!r.ok) throw new Error(`grid_context.geojson: HTTP ${r.status}`);
+          const bySite = parseGridContext(await r.json());
+          if (!cancelled) setGridContext({ status: "ready", bySite });
+        } catch (e) {
+          console.warn(e);
+          if (!cancelled) setGridContext({ status: "unavailable", bySite: new Map() });
+        }
       } catch (e) {
         if (!cancelled) setData({ status: "error", error: e instanceof Error ? e.message : String(e), features: [], props: [], byId: new Map(), meta: null });
       }
     })();
     return () => { cancelled = true; };
-  }, [setData]);
+  }, [setData, setGridContext]);
 }
 
 // One shared cache so every component reading the scenario gets the same object (computed once).

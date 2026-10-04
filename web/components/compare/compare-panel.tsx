@@ -6,7 +6,7 @@ import type { CandidateProps } from "@/lib/data/schema";
 import type { ScenarioResult, SiteResult } from "@/lib/scenario/scenario";
 import { Button } from "@/components/ui/primitives";
 import { SourceBadge, StatusGlyph, STATE_LABEL } from "@/components/shared/status";
-import { fmtAc, fmtDeg, fmtKm, fmtMi, fmtMwShort, fmtPct } from "@/lib/formatting/format";
+import { fmtAc, fmtDeg, fmtGridValue, fmtMi, fmtMwShort, fmtPct } from "@/lib/formatting/format";
 
 type Row = {
   label: string;
@@ -32,7 +32,7 @@ const ROWS: Row[] = [
   },
   {
     label: "Mapped ≥69 kV line", objective: (c) => c.grid_line_distance_km,
-    cell: (c) => (c.grid_line_distance_km === null ? MISSING : fmtKm(c.grid_line_distance_km)),
+    cell: (c) => (c.grid_line_distance_km === null ? MISSING : fmtGridValue(c.grid_line_distance_km)),
   },
   {
     label: "Mean slope, usable land", objective: (c, res) => c[res.terrainKey],

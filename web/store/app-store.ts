@@ -5,7 +5,7 @@
  * never recomputes Pareto.
  */
 import { create } from "zustand";
-import type { CandidateFeature, CandidateProps, Meta } from "@/lib/data/schema";
+import type { CandidateFeature, CandidateProps, GridContextFeature, Meta } from "@/lib/data/schema";
 import { DEFAULT_SCENARIO, type Scenario } from "@/lib/scenario/scenario";
 
 export type HoverSource = "map" | "chart" | "list";
@@ -20,8 +20,17 @@ interface DataState {
   meta: Meta | null;
 }
 
+/** Display-only transmission geometry per site (data/app/grid_context.geojson); optional, loaded after the core data. */
+export interface GridContextState {
+  status: "loading" | "ready" | "unavailable";
+  bySite: Map<string, GridContextFeature[]>;
+}
+
 interface AppState {
   data: DataState;
+  gridContext: GridContextState;
+  /** increments when the map should frame the selected site and its transmission context */
+  fitToken: number;
   scenario: Scenario;
   showScreened: boolean;
   selectedId: string | null;
@@ -35,6 +44,8 @@ interface AppState {
   flyToken: number;
 
   setData: (d: DataState) => void;
+  setGridContext: (g: GridContextState) => void;
+  requestFit: () => void;
   setScenario: (patch: Partial<Scenario>) => void;
   setShowScreened: (v: boolean) => void;
   select: (id: string | null, opts?: { fly?: boolean }) => void;
@@ -52,6 +63,8 @@ export const MAX_COMPARE = 3;
 
 export const useApp = create<AppState>((set) => ({
   data: { status: "loading", features: [], props: [], byId: new Map(), meta: null },
+  gridContext: { status: "loading", bySite: new Map() },
+  fitToken: 0,
   scenario: DEFAULT_SCENARIO,
   showScreened: true,
   selectedId: null,
@@ -64,6 +77,8 @@ export const useApp = create<AppState>((set) => ({
   flyToken: 0,
 
   setData: (data) => set({ data }),
+  setGridContext: (gridContext) => set({ gridContext }),
+  requestFit: () => set((s) => ({ fitToken: s.fitToken + 1 })),
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
   setShowScreened: (showScreened) => set({ showScreened }),
   select: (id, opts) => set((s) => ({ selectedId: id, flyToken: opts?.fly ? s.flyToken + 1 : s.flyToken })),

@@ -102,6 +102,23 @@ async function edgeCases() {
   await panel(page).getByRole("button", { name: /EPA RE-Powering screen/i }).click();
   ok((await panel(page).innerText()).includes("No historical EPA RE-Powering match"), "unmatched EPA → explicit message, no zeros");
   ok((await panel(page).innerText()).includes("Not assessed"), "FEMA shown as not assessed");
+  // grid distance 0 is a geometric state: text, chart tick, and transmission geometry for the selected site
+  await page.goto(`${URL}/?site=${WESTPOINT}`, { waitUntil: "domcontentloaded" });
+  await mapReady(page); await page.waitForTimeout(600);
+  const txt = await panel(page).innerText();
+  ok(txt.includes("Mapped ≥69 kV line intersects site boundary") && !txt.includes("0.00 km"), "zero grid distance reads 'Mapped ≥69 kV line intersects site boundary', never 0.00 km");
+  ok((await page.locator(".recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value").first().textContent()) === "Intersects", "chart zero tick reads 'Intersects'");
+  ok((await page.locator('g[role="button"][aria-label^="WestPoint"]').getAttribute("aria-label")).includes("intersects site boundary"), "chart point accessible name states intersection");
+  await panel(page).getByRole("button", { name: "Show on map" }).click(); await page.waitForTimeout(1200);
+  let roles = await page.evaluate(() => [...new Set(window.__ssMap.querySourceFeatures("sel-ctx").map((f) => f.properties.role))].sort().join(","));
+  ok(roles === "line,site", `intersecting site shows line over polygon, no connector (${roles})`);
+  ok((await page.locator('[aria-label="Map legend"]').innerText()).includes("Mapped ≥69 kV line (OSM)"), "legend explains the transmission line");
+  await page.goto(`${URL}/?site=${CAROLINA}`, { waitUntil: "domcontentloaded" });
+  await mapReady(page); await page.waitForTimeout(600);
+  await panel(page).getByRole("button", { name: "Show on map" }).click(); await page.waitForTimeout(1200);
+  roles = await page.evaluate(() => [...new Set(window.__ssMap.querySourceFeatures("sel-ctx").map((f) => f.properties.role))].sort().join(","));
+  ok(roles === "connector,line,site", `non-zero site shows line + shortest-distance connector (${roles})`);
+  ok((await panel(page).innerText()).includes("0.06 km"), "non-zero distance still shown in km");
   // no-results: quarries @ 20 MW
   await page.getByRole("combobox", { name: "Candidate set" }).click();
   await page.getByRole("option", { name: /Quarries/ }).click();

@@ -11,7 +11,7 @@ npm run typecheck && npm run lint
 npm run e2e                  # browser demo test; needs a running build (E2E_URL=http://localhost:3000)
 ```
 
-`predev`/`prebuild` run `scripts/sync-data.mjs`. It copies `../data/app/{candidates.geojson,meta.json,context.geojson}`
+`predev`/`prebuild` run `scripts/sync-data.mjs`. It copies `../data/app/{candidates.geojson,meta.json,context.geojson,grid_context.geojson}`
 into `public/data/` and copies the MapLibre worker into `public/maplibre/`. Both directories are generated and git-ignored.
 
 ## Structure
@@ -32,6 +32,7 @@ into `public/data/` and copies the MapLibre worker into `public/maplibre/`. Both
 
 ## Deviations from UI_SPEC
 
+* Amendment A1 (in UI_SPEC): grid distance 0 is shown as "Mapped ≥69 kV line intersects site boundary", and the chart's zero tick reads "Intersects". The selected site shows its transmission geometry from the optional `grid_context.geojson`.
 * Radix primitives are wrapped by hand in `components/ui/primitives.tsx` instead of being generated with the shadcn CLI, because the registry was unreachable from the build environment. The tokens and behaviour are the same.
 * Geist is loaded from the `geist` npm package instead of Google Fonts, so the app works offline.
 * The MapLibre web worker is shipped as a static file and loaded with `setWorkerUrl`, because bundler resolution of it failed in the static export.

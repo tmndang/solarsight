@@ -238,7 +238,7 @@
    "group": "epa",
    "provenance": "epa_historical",
    "unit": "miles",
-   "label": "EPA distance to transmission line (from EPA point)"
+   "label": "EPA distance to transmission line (historical; site boundary to EPA line layer for NC brownfields)"
   },
   "epa_transmission_kv": {
    "group": "epa",
@@ -394,7 +394,7 @@
    "group": "grid",
    "provenance": "derived",
    "unit": "km",
-   "label": "Distance to mapped >=69 kV transmission line (current OSM)"
+   "label": "Distance from site polygon boundary to mapped >=69 kV transmission line (current OSM; 0 = line intersects boundary)"
   },
   "nearest_line_kv": {
    "group": "grid",

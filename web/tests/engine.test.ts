@@ -2,10 +2,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { paretoAnalysis, type Objective } from "@/lib/pareto/pareto";
-import { parseData, type CandidateProps } from "@/lib/data/schema";
+import { parseData, parseGridContext, type CandidateProps } from "@/lib/data/schema";
 import { computeScenario, requiredUsableAcres, DEFAULT_SCENARIO } from "@/lib/scenario/scenario";
 import { compareOnObjectives, explainDominance } from "@/lib/explanations/explain";
-import { fmtDeg, fmtKm } from "@/lib/formatting/format";
+import { GRID_INTERSECTS, fmtDeg, fmtGridPhrase, fmtGridValue, fmtKm } from "@/lib/formatting/format";
 
 const MIN2: Objective[] = [{ key: "x", direction: "minimize" }, { key: "y", direction: "minimize" }];
 const run = (pts: [string, number, number][], objs = MIN2) =>
@@ -132,11 +132,26 @@ describe("explanations", () => {
     expect(e.comparisons[0].text).toMatch(/^0\.03 km closer to mapped ≥69 kV transmission \(0\.03 km vs 0\.06 km\)$/);
     expect(e.comparisons[1].text).toBe("0.34° flatter on usable land (0.42° vs 0.76°)");
   });
-  it("equal objective is described as the same, not as better", () => {
+  it("zero-distance tie is still a tie (Pareto unchanged) and is worded as boundary intersection", () => {
     const r = computeScenario(props, meta, DEFAULT_SCENARIO);
-    const e = explainDominance("DEQ-08001-04-064", r, byId)!; // Schlage Lock vs WestPoint: both 0 km
-    expect(e.comparisons[0].relation).toBe("equal");
-    expect(e.comparisons[0].text).toMatch(/^the same distance to mapped transmission \(both 0\.00 km\)$/);
+    const e = explainDominance("DEQ-08001-04-064", r, byId)!; // Schlage Lock vs WestPoint: both intersect
+    expect(e.dominatorId).toBe("DEQ-18035-14-083");
+    expect(e.comparisons.map((c) => c.relation)).toEqual(["equal", "better"]);
+    expect(e.comparisons[0].text).toBe("a mapped ≥69 kV line intersecting its boundary, as does this site");
+    expect(e.comparisons.some((c) => c.text.includes("0.00 km"))).toBe(false);
+  });
+  it("non-zero equal distances keep the 'same distance' wording", () => {
+    const a = { ...props[0], grid_line_distance_km: 0.5, usable_mean_slope_deg_slope10: 1 };
+    const c = compareOnObjectives(a, { ...a, usable_mean_slope_deg_slope10: 2 }, ["grid_line_distance_km"]);
+    expect(c[0].text).toBe("the same distance to mapped transmission (both 0.50 km)");
+  });
+  it("dominator intersecting vs site at a distance", () => {
+    const a = { ...props[0], grid_line_distance_km: 0, usable_mean_slope_deg_slope10: 1 };
+    const b = { ...props[0], grid_line_distance_km: 0.06, usable_mean_slope_deg_slope10: 2 };
+    const c = compareOnObjectives(a, b, ["grid_line_distance_km"]);
+    expect(c[0].relation).toBe("better");
+    expect(c[0].advantage).toBeCloseTo(0.06, 9);
+    expect(c[0].text).toBe("a mapped ≥69 kV line intersecting its boundary (this site: 0.06 km away)");
   });
   it("tiny differences that round to zero are called 'slightly'", () => {
     const a = { ...props[0], grid_line_distance_km: 0.1, usable_mean_slope_deg_slope10: 1 };
@@ -148,9 +163,38 @@ describe("explanations", () => {
     const r = computeScenario(props, meta, DEFAULT_SCENARIO);
     expect(explainDominance("DEQ-02005-98-007", r, byId)).toBeNull();
   });
+  it("grid distance 0 is a geometric state, never '0.00 km'", () => {
+    expect(fmtGridValue(0)).toBe("Intersects site boundary");
+    expect(fmtGridPhrase(0)).toBe(GRID_INTERSECTS);
+    expect(GRID_INTERSECTS).toBe("Mapped ≥69 kV line intersects site boundary");
+    expect(fmtGridValue(0.004)).toBe("0.00 km"); // tiny but non-zero is still a distance
+    expect(fmtGridPhrase(0.03)).toBe("0.03 km to mapped ≥69 kV line");
+  });
   it("formatting never invents zeros from rounding semantics", () => {
     expect(fmtKm(0.033)).toBe("0.03 km");
     expect(fmtKm(3.31)).toBe("3.3 km");
     expect(fmtDeg(0.4246)).toBe("0.4°");
+  });
+});
+
+describe("grid context geometry (data/app/grid_context.geojson)", () => {
+  const ctx = parseGridContext(JSON.parse(readFileSync(join(DATA, "grid_context.geojson"), "utf8")));
+  it("every site with a grid distance has its nearest line; zero ⇔ line intersects the site, no connector", () => {
+    for (const p of props) {
+      if (p.grid_line_distance_km === null) continue;
+      const fs = ctx.get(p.site_id) ?? [];
+      const nearest = fs.filter((f) => f.properties.role === "line" && f.properties.nearest);
+      expect(nearest.length, p.site_id).toBe(1);
+      expect(nearest[0].properties.kv).toBe(p.nearest_line_kv);
+      const conn = fs.filter((f) => f.properties.role === "connector");
+      if (p.grid_line_distance_km === 0) {
+        expect(nearest[0].properties.intersects_site, p.site_id).toBe(true);
+        expect(conn.length, p.site_id).toBe(0);
+      } else {
+        expect(nearest[0].properties.intersects_site, p.site_id).toBe(false);
+        expect(conn.length, p.site_id).toBe(1);
+        expect(conn[0].properties.distance_km).toBe(p.grid_line_distance_km);
+      }
+    }
   });
 });

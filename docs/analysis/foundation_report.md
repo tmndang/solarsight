@@ -58,11 +58,27 @@ Largest discrepancies:
 
 ## 4. Grid: SolarSight current distance vs EPA historical transmission distance
 
-- matched candidates compared: 314
-- polygon-edge (SolarSight production) vs EPA: median abs diff 0.01 km, median signed 0.00 km, Spearman 0.85
-- same EPA point, OSM >=69 kV lines vs EPA: median abs diff 0.20 km, Spearman 0.81, within 0.5 km: 86%
+- share of EPA transmission distances that are exactly 0, by NC program:
 
-Largest point-to-line disagreements:
+| Program | records | share_exactly_0 |
+|---|---|---|
+| RCRA | 89 | 0.247 |
+| SUPERFUND | 48 | 0.167 |
+| NORTH CAROLINA BROWNFIELD PROJECTS | 973 | 0.136 |
+| LANDFILL METHANE OUTREACH PROGRAM | 109 | 0.128 |
+| BROWNFIELDS | 946 | 0.050 |
+| NORTH CAROLINA PREREGULATORY LANDFILLS | 656 | 0.011 |
+| NORTH CAROLINA HAZARDOUS WASTE SITES | 2577 | 0.007 |
+| NORTH CAROLINA PERMITTED SOLID WASTE LANDFILLS | 673 | 0.006 |
+| AML | 3 | 0.000 |
+
+- matched candidates compared: 314
+- polygon-boundary (SolarSight production) vs EPA: median abs diff 0.007 km, median signed 0.00 km, Spearman 0.85, within 0.1 km: 87%
+- exact zeros: SolarSight 63, EPA 80, both 62 (EPA is 0 for 62 of the 63 sites where a mapped line intersects the boundary)
+- alternative origin, OSM >=69 kV lines from EPA's published point vs EPA: median abs diff 0.20 km, Spearman 0.81, within 0.5 km: 86%
+- conclusion: EPA's NC Brownfield Projects transmission distances behave as polygon-boundary-to-line distances (not point-based), measured to EPA's own historical line layer; remaining differences are line definitions (EPA includes 66 kV and unknown-voltage lines) and data vintage.
+
+Largest disagreements between EPA and the point-origin alternative:
 
 | site_id | name | epa_km | ss_from_epa_point_km | grid_line_distance_km | epa_transmission_kv | nearest_line_kv |
 |---|---|---|---|---|---|---|

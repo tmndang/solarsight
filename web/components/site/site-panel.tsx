@@ -1,6 +1,6 @@
 "use client";
 import { useEffect } from "react";
-import { ArrowRight, Check, ExternalLink, Plus, X } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, Map as MapIcon, Plus, X } from "lucide-react";
 import { useApp, MAX_COMPARE } from "@/store/app-store";
 import { useScenarioResult } from "@/lib/data/load";
 import { explainDominance } from "@/lib/explanations/explain";
@@ -9,7 +9,7 @@ import type { ScenarioResult, SiteResult } from "@/lib/scenario/scenario";
 import { Button, Disclosure, InfoTip } from "@/components/ui/primitives";
 import { SourceBadge, StatusGlyph, STATE_LABEL } from "@/components/shared/status";
 import { screenedLabel } from "@/components/map/map-hover-card";
-import { fmtAc, fmtDeg, fmtKm, fmtKv, fmtMi, fmtMwh, fmtMwShort, fmtPct, fmtShare, SITE_TYPE_LABEL } from "@/lib/formatting/format";
+import { GRID_INTERSECTS, fmtAc, fmtDeg, fmtGridValue, fmtKm, fmtKv, fmtMi, fmtMwh, fmtMwShort, fmtPct, fmtShare, SITE_TYPE_LABEL } from "@/lib/formatting/format";
 import { MetricRow, NotAssessed, SectionHeader } from "./metric";
 import { SiteEmptyState } from "./site-empty-state";
 
@@ -149,7 +149,7 @@ function TradeoffBlock({ c, r, res }: { c: CandidateProps; r: SiteResult; res: S
   }
   const values = (
     <dl className="mt-2">
-      <MetricRow label="Mapped ≥69 kV line" value={fmtKm(c.grid_line_distance_km!)} />
+      <GridDistanceRow c={c} />
       <MetricRow label="Mean slope of usable land" value={fmtDeg(terrain!)} />
     </dl>
   );
@@ -200,6 +200,55 @@ function TradeoffBlock({ c, r, res }: { c: CandidateProps; r: SiteResult; res: S
   );
 }
 
+/* ---------------- transmission proximity ---------------- */
+const GRID_TIP = "Shortest planar distance from the site polygon boundary to the nearest OpenStreetMap power line tagged ≥ 69 kV; " +
+  "0 means a mapped line intersects the boundary. A proximity screening proxy only: it does not indicate interconnection " +
+  "capacity, queue position, cost or availability.";
+
+/** grid_line_distance_km === 0 is shown as a geometric statement, never as "0.00 km". */
+function GridDistanceRow({ c, detailed = false }: { c: CandidateProps; detailed?: boolean }) {
+  const ctx = useApp((s) => s.gridContext);
+  const requestFit = useApp((s) => s.requestFit);
+  const d = c.grid_line_distance_km;
+  const kv = c.nearest_line_kv !== null ? fmtKv(c.nearest_line_kv) : undefined;
+  const tip = detailed ? <InfoTip label="About transmission distance" content={GRID_TIP} /> : undefined;
+  const row = d === 0 ? (
+    <div className="py-1">
+      <dt className="sr-only">Mapped ≥69 kV line</dt>
+      <dd className="flex items-baseline justify-between gap-3">
+        <span className="flex items-center gap-1.5 text-[13px] text-text-primary">
+          <span aria-hidden className="inline-block h-0.5 w-3 shrink-0 translate-y-[-3px] rounded bg-grid-line" />
+          {GRID_INTERSECTS}{tip}
+        </span>
+        {kv && <span className="meta-text shrink-0">{kv}</span>}
+      </dd>
+    </div>
+  ) : (
+    <MetricRow label={detailed ? "Mapped ≥69 kV transmission line" : "Mapped ≥69 kV line"} tip={tip}
+      value={d !== null ? fmtGridValue(d) : undefined} sub={detailed ? kv : undefined}
+      missing={d === null ? "not available" : undefined} />
+  );
+  if (!detailed || d === null) return row;
+  const has = ctx.status === "ready" && ctx.bySite.has(c.site_id);
+  return (
+    <>
+      {row}
+      <div className="flex items-center justify-between gap-2 pb-1">
+        <span className="meta-text">
+          {ctx.status === "loading" ? "Loading line geometry…" : has
+            ? (d === 0 ? "Line shown over the site on the map." : "Line and shortest distance shown on the map.")
+            : "Line geometry unavailable."}
+        </span>
+        {has && (
+          <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs" onClick={requestFit}>
+            <MapIcon size={12} aria-hidden /> Show on map
+          </Button>
+        )}
+      </div>
+    </>
+  );
+}
+
 /* ---------------- SolarSight analysis ---------------- */
 function Analysis({ c, res }: { c: CandidateProps; res: ScenarioResult }) {
   const t = res.scenario.slopeThresholdPct;
@@ -209,12 +258,9 @@ function Analysis({ c, res }: { c: CandidateProps; res: ScenarioResult }) {
     <section className="px-4 py-3.5" aria-label="SolarSight analysis">
       <SectionHeader title="SolarSight analysis" right={<SourceBadge kind="derived" />} />
       <dl>
-        <MetricRow label="Mapped ≥69 kV transmission line"
-          tip={<InfoTip label="About transmission distance" content="Distance from the site boundary to the nearest OpenStreetMap power line tagged ≥ 69 kV. A screening proxy: it does not indicate interconnection capacity, queue position, cost or availability." />}
-          value={c.grid_line_distance_km !== null ? fmtKm(c.grid_line_distance_km) : undefined}
-          sub={c.nearest_line_kv !== null ? fmtKv(c.nearest_line_kv) : undefined}
-          missing={c.grid_line_distance_km === null ? "not available" : undefined} />
-        <MetricRow label="Mapped ≥69 kV substation" value={c.substation_distance_km !== null ? fmtKm(c.substation_distance_km) : undefined}
+        <GridDistanceRow c={c} detailed />
+        <MetricRow label="Mapped ≥69 kV substation"
+          value={c.substation_distance_km === null ? undefined : c.substation_distance_km === 0 ? "On or within site" : fmtKm(c.substation_distance_km)}
           missing={c.substation_distance_km === null ? "not available" : undefined} />
         <MetricRow label={`Mean slope, usable land`} value={terrain !== null ? fmtDeg(terrain) : undefined}
           missing={terrain === null ? "not available" : undefined} />
@@ -275,7 +321,9 @@ function EpaScreening({ c }: { c: CandidateProps }) {
               missing={c.epa_screening_acres === null ? "not reported" : undefined} />
           </dl>
           <p className="meta-text mt-1.5">
-            Match: {conf}. EPA distances are measured from EPA&apos;s site point to its own historical line layer; SolarSight&apos;s are from the current boundary to mapped ≥69 kV lines.
+            Match: {conf}. EPA publishes these records as points, but its NC brownfield transmission distances behave as
+            boundary-to-line distances (to EPA&apos;s own historical line layer). SolarSight measures from the current DEQ
+            boundary to currently mapped ≥69 kV lines.
             Vintage: as downloaded (EPA documentation dated 2022).
           </p>
         </>

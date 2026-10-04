@@ -16,10 +16,12 @@ attribute table and USFWS NWI. Numbers come from `docs/analysis/foundation_repor
 3. **DEQ vs EPA acreage.** EPA acreage *is* the DEQ-reported acreage (equal for 97.3%). Current DEQ
    polygon area: median abs diff 0.10 ac (1.9%); 76.6% within 10%; 92 records differ by >50%
    (mostly boundary amendments and multipart updates, e.g. Organic Production Services 0.39 → 14.9 ac).
-4. **Our transmission distance vs EPA.** From the same EPA point: median abs diff 0.20 km,
-   Spearman 0.81, 86% within 0.5 km. Production metric (polygon edge) vs EPA: Spearman 0.85.
-   Disagreements come from definitions (EPA includes 66 kV and unknown-voltage lines; SolarSight
-   requires a ≥ 69 kV tag) and from data vintage.
+4. **Our transmission distance vs EPA.** EPA's NC Brownfield Projects distances are boundary-to-line,
+   not point-based (13.6% exactly 0). SolarSight's production metric (polygon boundary to line) vs
+   EPA: median abs diff 0.007 km, Spearman 0.85, and both are 0 for 62 of the 63 sites where
+   SolarSight measures 0. Measuring from EPA's published point instead does worse (median abs diff
+   0.20 km, Spearman 0.81). Disagreements come from definitions (EPA includes 66 kV and
+   unknown-voltage lines; SolarSight requires a ≥ 69 kV tag) and from data vintage.
 5. **Is the transmission metric trustworthy?** Yes, as a proximity proxy. It is validated against
    brute force and against EPA, and it is current.
 6. **Does NSRDB/PySAM change decisions?** No. MWh per MW AC: CV 2.0% (1,634–1,860), inside the

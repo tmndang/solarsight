@@ -120,19 +120,39 @@ objective it would let differences of about 2% (inside model error) decide domin
 ## 8. Transmission proximity (current, SolarSight)
 
 > `grid_line_distance_km` = minimum planar distance in EPSG:32119 from the current candidate
-> polygon (edge; 0 if the line crosses the site) to the nearest OpenStreetMap `power=line` whose
-> maximum `voltage` tag is >= 69 kV (Overture `base/infrastructure`, release 2026-09-23.1).
+> **polygon boundary** to the nearest OpenStreetMap `power=line` whose maximum `voltage` tag is
+> >= 69 kV (Overture `base/infrastructure`, release 2026-09-23.1). It is polygon-to-line, never
+> centroid- or address-point-to-line.
+
+**Zero is a geometric state.** `grid_line_distance_km == 0` means a mapped >= 69 kV line intersects
+the site boundary. This holds for all 109 zero-distance candidates; none has a line lying only
+inside the polygon (checked in `scripts/export_grid_context.py`). The app never shows it as
+"0.00 km". It reads "Mapped ≥69 kV line intersects site boundary", and the tradeoff chart keeps
+these sites at their true x = 0 under an "Intersects" tick. Sites that all intersect a line are tied
+on this objective. The Pareto calculation is deliberately left unchanged, so terrain separates them.
+For the selected site, the app draws the nearest line (and any line crossing the site) and, when the
+distance is above zero, the shortest boundary-to-line segment (`data/app/grid_context.geojson`,
+display only).
 
 Lines without a voltage tag (11%) are excluded rather than guessed. The value was checked against
-an independent brute-force computation (identical) and against EPA's historical distance from the
-same EPA point (Spearman 0.81, 86% within 0.5 km).
+an independent brute-force computation (identical) and against EPA's historical NC brownfield
+distances. Those are also boundary-to-line (see below): median absolute difference 0.007 km,
+Spearman 0.85, and EPA reports 0 for 62 of the 63 matched sites where SolarSight measures 0.
 
-It is a **proximity screening proxy only**. It says nothing about capacity, queue, cost or
-feasibility. Substation distance is context only: it is less well validated (Spearman 0.74) and
+It is a **proximity screening proxy only**. It says nothing about interconnection capacity, hosting
+capacity, queue position, cost, right of way or feasibility. Substation distance is context only: it is less well validated (Spearman 0.74) and
 correlated with line distance (ρ about 0.72).
 
 EPA's own distances (`epa_transmission_distance_miles` etc.) are shown in miles, labelled as EPA
-historical screening.
+historical screening. EPA distributes RE-Powering records as points, but its transmission distances
+for "North Carolina Brownfield Projects" are **not point-based**:
+
+* 13.6% are exactly 0, against 0.6–1.1% for EPA's NC hazardous-waste and landfill programs;
+* they agree with SolarSight's boundary-to-line distance far better (median abs diff 0.007 km) than
+  a distance measured from EPA's published point does (0.20 km).
+
+Read them as boundary-to-line distances, measured on the boundary and EPA line layer of that time
+(`docs/analysis/foundation_report.md` §4).
 
 ## 9. Environment
 

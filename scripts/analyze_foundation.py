@@ -84,20 +84,35 @@ def main():
     lines, subs = grid_layers()
     g = d[d.epa_match_method == "id"].copy()
     g["epa_km"] = g.epa_transmission_distance_miles * KM_PER_MI
-    # apples-to-apples: our layer, distance from the EPA point (same origin as EPA)
+    # What origin does EPA measure from? EPA publishes NC records as points, but an exact 0 from a geocoded
+    # point is rare, while a boundary-to-line distance is 0 whenever a line crosses the site. Compare the share of
+    # exact zeros by NC program, and compare EPA against both of our candidate origins.
+    epa_nc = pd.read_parquet(INTERIM / "epa_repowering_nc.parquet")
+    zs = epa_nc.assign(zero=pd.to_numeric(epa_nc.TransDist, errors="coerce") == 0).groupby("Program").zero.agg(["size", "mean"])
+    REP.append("- share of EPA transmission distances that are exactly 0, by NC program:\n\n"
+               + md(zs.rename(columns={"size": "records", "mean": "share_exactly_0"}).reset_index()
+                    .sort_values("share_exactly_0", ascending=False), "{:.3f}"))
+    # alternative origin for comparison only: our line layer measured from EPA's published point
     epa_pts = gpd.GeoSeries(gpd.points_from_xy(g.epa_lon, g.epa_lat), crs="EPSG:4326").to_crs(METRIC_CRS)
     li = lines.sindex.nearest(epa_pts.values, return_all=False)[1]
     g["ss_from_epa_point_km"] = [p.distance(lines.geometry.iloc[j]) / 1000 for p, j in zip(epa_pts, li)]
     diff_edge = g.grid_line_distance_km - g.epa_km
     diff_pt = g.ss_from_epa_point_km - g.epa_km
-    REP.append(f"- matched candidates compared: {len(g)}")
-    REP.append(f"- polygon-edge (SolarSight production) vs EPA: median abs diff {diff_edge.abs().median():.2f} km, "
-               f"median signed {diff_edge.median():.2f} km, Spearman {g.grid_line_distance_km.corr(g.epa_km, 'spearman'):.2f}")
-    REP.append(f"- same EPA point, OSM >=69 kV lines vs EPA: median abs diff {diff_pt.abs().median():.2f} km, "
+    z_ss, z_epa = g.grid_line_distance_km == 0, g.epa_km == 0
+    REP.append(f"\n- matched candidates compared: {len(g)}")
+    REP.append(f"- polygon-boundary (SolarSight production) vs EPA: median abs diff {diff_edge.abs().median():.3f} km, "
+               f"median signed {diff_edge.median():.2f} km, Spearman {g.grid_line_distance_km.corr(g.epa_km, 'spearman'):.2f}, "
+               f"within 0.1 km: {(diff_edge.abs() <= 0.1).mean():.0%}")
+    REP.append(f"- exact zeros: SolarSight {int(z_ss.sum())}, EPA {int(z_epa.sum())}, both {int((z_ss & z_epa).sum())} "
+               f"(EPA is 0 for {int((z_ss & z_epa).sum())} of the {int(z_ss.sum())} sites where a mapped line intersects the boundary)")
+    REP.append(f"- alternative origin, OSM >=69 kV lines from EPA's published point vs EPA: median abs diff {diff_pt.abs().median():.2f} km, "
                f"Spearman {g.ss_from_epa_point_km.corr(g.epa_km, 'spearman'):.2f}, "
                f"within 0.5 km: {(diff_pt.abs() <= 0.5).mean():.0%}")
+    REP.append("- conclusion: EPA's NC Brownfield Projects transmission distances behave as polygon-boundary-to-line distances "
+               "(not point-based), measured to EPA's own historical line layer; remaining differences are line definitions "
+               "(EPA includes 66 kV and unknown-voltage lines) and data vintage.")
     big = g.assign(diff_pt=diff_pt).reindex(diff_pt.abs().sort_values(ascending=False).index).head(6)
-    REP.append("\nLargest point-to-line disagreements:\n\n" + md(big[["site_id", "name", "epa_km", "ss_from_epa_point_km",
+    REP.append("\nLargest disagreements between EPA and the point-origin alternative:\n\n" + md(big[["site_id", "name", "epa_km", "ss_from_epa_point_km",
                                                                       "grid_line_distance_km", "epa_transmission_kv",
                                                                       "nearest_line_kv"]]))
     # brute-force spot checks against all line geometries (independent of sjoin_nearest)
@@ -116,11 +131,11 @@ def main():
     ax[0].scatter(g.epa_km, g.ss_from_epa_point_km, s=8, alpha=.6)
     ax[0].plot([0, 10], [0, 10], c="k", lw=.8); ax[0].set_xlim(0, 10); ax[0].set_ylim(0, 10)
     ax[0].set_xlabel("EPA RE-Powering transmission distance (km, historical)")
-    ax[0].set_ylabel("OSM >=69 kV line distance from EPA point (km)"); ax[0].set_title("Same origin point")
+    ax[0].set_ylabel("OSM >=69 kV line distance from EPA point (km)"); ax[0].set_title("Alternative: from EPA's published point")
     ax[1].scatter(g.epa_km, g.grid_line_distance_km, s=8, alpha=.6, c="#d95f02")
     ax[1].plot([0, 10], [0, 10], c="k", lw=.8); ax[1].set_xlim(0, 10); ax[1].set_ylim(0, 10)
-    ax[1].set_xlabel("EPA distance (km)"); ax[1].set_ylabel("SolarSight polygon-edge distance (km)")
-    ax[1].set_title("Production metric (polygon edge)")
+    ax[1].set_xlabel("EPA distance (km)"); ax[1].set_ylabel("SolarSight polygon-boundary distance (km)")
+    ax[1].set_title("Production metric (polygon boundary to line)")
     fig.tight_layout(); fig.savefig(OUT / "grid_vs_epa.png", dpi=110)
 
     # 5 solar resource ----------------------------------------------------------------------

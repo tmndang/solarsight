@@ -44,7 +44,8 @@ Raw files under `data/raw/` are never edited. The manually downloaded datasets a
 * **NC programs**: NC Hazardous Waste Sites 2,577; **NC Brownfield Projects 973**; EPA Brownfields (ACRES) 946; NC Permitted Solid Waste Landfills 673; NC Pre-regulatory Landfills 656; LMOP 109; RCRA 89; Superfund 48; AML 3.
 * **Fields used (GDB name → Mapper label, unit)**: Ref → Cross-Reference Number; SiteID → Site ID (= DEQ `BF_Number` for NC Brownfield Projects); Acreage → Acreage (acres); EstPVCap → Estimated PV Capacity (MW; **= acres / 6.9**, median implied 6.900 ac/MW, capped at 600 MW, AC/DC not stated); UtilPV → Utility Scale PV (Y iff EstPVCap >= 5 MW); DistribPV; GHI → Maximum Annual GHI (kWh/m²/day); TransDist → Distance to Nearest Transmission Line (**miles**); TLkV (kV); TLStatus; SSDist (miles); SSVoltage → "Nearest Substation Voltage (Volts)" — **values are kV** (100, 115, 230); RdDist, RailDist (miles); Latitude/Longitude.
 * **Vintage**: not stated in the files. EPA's user guide / data documentation is dated 2022. Labelled `epa_screening_vintage` = "as downloaded; vintage not stated".
-* **Limitations**: point geometry (address geocode); historical infrastructure layer; EPA acreage for NC brownfields is the DEQ-reported acreage at that time.
+* **Distance origin**: the layer stores points, but `TransDist` for NC Brownfield Projects is **not point-based**. It behaves as a site-boundary-to-line distance: 13.6% exactly 0, against 0.6–1.1% for NC hazardous-waste and landfill programs, and a median abs diff of 0.007 km from SolarSight's polygon-boundary distance (`docs/analysis/foundation_report.md` §4).
+* **Limitations**: point geometry in the distributed layer (address geocode); historical infrastructure layer; EPA acreage for NC brownfields is the DEQ-reported acreage at that time.
 
 ## 3. USFWS National Wetlands Inventory, North Carolina — DERIVED INPUT
 

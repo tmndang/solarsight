@@ -44,7 +44,7 @@ FIELDS = {
     "epa_estimated_pv_capacity_mw": ("epa", "epa_historical", "MW (AC/DC unspecified)", "EPA estimated PV capacity (acres / 6.9)"),
     "epa_max_annual_ghi_kwh_m2_day": ("epa", "epa_historical", "kWh/m2/day", "EPA maximum annual GHI"),
     "epa_utility_scale_pv": ("epa", "epa_historical", None, "EPA utility-scale PV flag (EPA est. >= 5 MW)"),
-    "epa_transmission_distance_miles": ("epa", "epa_historical", "miles", "EPA distance to transmission line (from EPA point)"),
+    "epa_transmission_distance_miles": ("epa", "epa_historical", "miles", "EPA distance to transmission line (historical; site boundary to EPA line layer for NC brownfields)"),
     "epa_transmission_kv": ("epa", "epa_historical", "kV", "EPA nearest transmission line voltage"),
     "epa_transmission_status": ("epa", "epa_historical", None, "EPA nearest transmission line status"),
     "epa_substation_distance_miles": ("epa", "epa_historical", "miles", "EPA distance to substation"),
@@ -73,7 +73,7 @@ FIELDS = {
     "annual_mwh_per_mw_ac": ("solar", "approximated", "MWh/yr per MW AC", "Modelled annual generation per MW AC"),
     "ac_capacity_factor": ("solar", "approximated", "fraction", "Modelled AC capacity factor"),
     # grid
-    "grid_line_distance_km": ("grid", "derived", "km", "Distance to mapped >=69 kV transmission line (current OSM)"),
+    "grid_line_distance_km": ("grid", "derived", "km", "Distance from site polygon boundary to mapped >=69 kV transmission line (current OSM; 0 = line intersects boundary)"),
     "nearest_line_kv": ("grid", "derived", "kV", "Voltage tag of that line"),
     "substation_distance_km": ("grid", "derived", "km", "Distance to mapped >=69 kV substation (current OSM)"),
     "road_distance_km": ("grid", "derived", "km", "Distance to drivable road (OSM)"),

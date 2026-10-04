@@ -143,3 +143,43 @@ export function parseData(rawCandidates: unknown, rawMeta: unknown) {
   }
   return { candidates: c.data, meta: m.data };
 }
+
+/**
+ * data/app/grid_context.geojson (scripts/export_grid_context.py): display-only transmission geometry for the
+ * selected site. role "line" = nearest mapped ≥69 kV line (+ any line intersecting the site), clipped to a window;
+ * role "connector" = shortest site-boundary-to-line segment (only when grid_line_distance_km > 0).
+ */
+const Lineal = z.union([
+  z.object({ type: z.literal("LineString"), coordinates: z.array(z.array(z.number())) }),
+  z.object({ type: z.literal("MultiLineString"), coordinates: z.array(z.array(z.array(z.number()))) }),
+]);
+export const GridContextSchema = z.object({
+  type: z.literal("FeatureCollection"),
+  features: z.array(z.object({
+    type: z.literal("Feature"),
+    properties: z.object({
+      site_id: z.string(),
+      role: z.enum(["line", "connector"]),
+      kv: z.number().finite(),
+      nearest: z.boolean(),
+      intersects_site: z.boolean(),
+      distance_km: num,
+    }),
+    geometry: Lineal,
+  })),
+});
+export type GridContextFeature = z.infer<typeof GridContextSchema>["features"][number];
+
+export function parseGridContext(raw: unknown): Map<string, GridContextFeature[]> {
+  const g = GridContextSchema.safeParse(raw);
+  if (!g.success) {
+    const i = g.error.issues[0];
+    throw new Error(`grid_context.geojson: ${i.path.join(".")}: ${i.message}`);
+  }
+  const bySite = new Map<string, GridContextFeature[]>();
+  for (const f of g.data.features) {
+    const list = bySite.get(f.properties.site_id);
+    if (list) list.push(f); else bySite.set(f.properties.site_id, [f]);
+  }
+  return bySite;
+}

@@ -74,11 +74,21 @@ export function MethodologySheet() {
     {
       value: "grid", title: "Transmission proximity", content: (
         <>
-          <P>Minimum planar distance from the current site boundary (0 if a line crosses it) to the nearest OpenStreetMap power
-            line tagged ≥ {a.grid_min_kv} kV. Lines without a voltage tag are excluded.</P>
-          <P>Checked against an independent brute-force calculation and against EPA&apos;s historical distances (same origin point:
-            Spearman 0.81, 86% within 0.5 km). It is a proximity screening proxy only — it does not indicate interconnection
-            capacity, queue position, cost or availability.</P>
+          <P><b className="text-text-primary">Grid distance is measured from the candidate polygon boundary to the line</b>, not from a
+            centroid or address point: it is the minimum planar distance (NAD83 / North Carolina, metres) between the current site
+            polygon and the nearest OpenStreetMap power line tagged ≥ {a.grid_min_kv} kV. Lines without a voltage tag are excluded.</P>
+          <P>A distance of exactly 0 is a geometric state, not a rounded number: a mapped ≥{a.grid_min_kv} kV line intersects the site
+            boundary (true for every zero in this dataset). The app shows it as &ldquo;Mapped ≥69 kV line intersects site boundary&rdquo;,
+            and the tradeoff chart keeps those sites at x = 0 under an &ldquo;Intersects&rdquo; tick. Sites that all intersect a line are
+            tied on this objective; the Pareto comparison treats them as ties and separates them by terrain only.</P>
+          <P>When a site is selected, the map draws the nearest mapped line (and any other line crossing the site) and, if the distance is
+            above zero, the shortest boundary-to-line segment that was measured.</P>
+          <P><b className="text-text-primary">It is only a proximity screening proxy.</b> A nearby or intersecting mapped line does not indicate
+            interconnection capacity, hosting capacity, queue position, cost, right of way or availability, and OSM voltage tags can be
+            incomplete.</P>
+          <P>Checked against an independent brute-force calculation and against EPA&apos;s historical NC brownfield distances, which are also
+            boundary-to-line: median absolute difference 0.01 km, Spearman 0.85; where SolarSight measures 0, EPA reports 0 for 62 of 63 matched
+            sites. Remaining differences come from line definitions (EPA&apos;s historical layer includes 66 kV and unknown-voltage lines).</P>
         </>
       ),
     },
@@ -101,9 +111,15 @@ export function MethodologySheet() {
     },
     {
       value: "epa", title: "EPA RE-Powering baseline", content: (
-        <P>EPA RE-Powering is a national first-pass renewable-energy screen. Its values (estimated PV = acres ÷ 6.9, GHI, distances in miles from
-          EPA&apos;s site point to its own line layer) are shown separately and labelled as historical screening. SolarSight joins DEQ projects to
-          EPA records by exact project ID where possible and never overwrites current DEQ geometry with EPA values.</P>
+        <>
+          <P>EPA RE-Powering is a national first-pass renewable-energy screen. Its values (estimated PV = acres ÷ 6.9, GHI, distances in miles to
+            EPA&apos;s own historical line layer) are shown separately and labelled as historical screening. SolarSight joins DEQ projects to
+            EPA records by exact project ID where possible and never overwrites current DEQ geometry with EPA values.</P>
+          <P>EPA distributes these records as points, but its transmission distances for &ldquo;North Carolina Brownfield Projects&rdquo; are
+            not point-based: 13.6% are exactly 0 (vs 0.6–1.1% for EPA&apos;s NC hazardous-waste and landfill programs), and they match SolarSight&apos;s
+            boundary-to-line distances to a median of 0.01 km. They should be read as boundary-based, measured on the boundary and line
+            layer of that time.</P>
+        </>
       ),
     },
     {
