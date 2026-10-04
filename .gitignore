@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/raw/
+# processed outputs are small and committed so the demo works offline
+data/interim/
