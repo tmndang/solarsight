@@ -5,10 +5,13 @@ export const fmtKm = (v: number) => (Math.abs(v) < 1 ? v.toFixed(2) : v.toFixed(
  * grid_line_distance_km === 0 is a geometric state, not a small number: a mapped ≥69 kV line crosses the
  * candidate polygon boundary (verified for every zero in scripts/export_grid_context.py). Never show "0.00 km".
  */
-export const GRID_INTERSECTS = "Mapped ≥69 kV line intersects site boundary";
+export const GRID_INTERSECTS = "Mapped ≥69 kV transmission intersects site boundary";
 export const gridIntersects = (v: number | null | undefined): v is 0 => v === 0;
-/** Value-only form for cells/rows whose label already reads "Mapped ≥69 kV line". */
-export const fmtGridValue = (v: number) => (v === 0 ? "Intersects site boundary" : fmtKm(v));
+/** Value-only form for cells/rows whose label already names the line. Missing stays missing (never 0). */
+export const fmtGridValue = (v: number | null) =>
+  v === null ? "Not available" : v === 0 ? "Intersects site boundary" : `${fmtKmNonZero(v)} from site boundary`;
+/** Non-zero distances never display as "0.00 km" (that would read as an intersection). */
+export const fmtKmNonZero = (v: number) => (v > 0 && v < 0.005 ? "< 0.01 km" : fmtKm(v));
 /** Stand-alone phrase (lists, tooltips, accessible names). */
 export const fmtGridPhrase = (v: number) => (v === 0 ? GRID_INTERSECTS : `${fmtKm(v)} to mapped ≥69 kV line`);
 export const fmtDeg = (v: number) => (Math.abs(v) < 0.1 && v !== 0 ? v.toFixed(2) : v.toFixed(1)) + "°";

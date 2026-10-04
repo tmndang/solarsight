@@ -8,6 +8,7 @@ import { ScreeningRail } from "@/components/controls/screening-rail";
 import { SitePanel } from "@/components/site/site-panel";
 import { BottomPanel } from "@/components/tradeoffs/bottom-panel";
 import { MethodologySheet } from "@/components/methodology/methodology-sheet";
+import { CompareTray } from "@/components/compare/compare-tray";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
@@ -34,6 +35,7 @@ const SIZES = [5, 10, 20, 40];
 function Workspace() {
   const setMethodologyOpen = useApp((s) => s.setMethodologyOpen);
   const bottomOpen = useApp((s) => s.bottomOpen);
+  const bottomTab = useApp((s) => s.bottomTab);
   const selectedId = useApp((s) => s.selectedId);
   const [setupOpen, setSetupOpen] = useState(false);
 
@@ -70,18 +72,21 @@ function Workspace() {
         <aside aria-label="Project and screening" className="min-h-0 overflow-y-auto border-r border-border bg-surface max-[1023px]:hidden">
           <ScreeningRail />
         </aside>
-        <section aria-label="Map and tradeoffs" className={`grid min-h-0 min-w-0 ${bottomOpen ? "grid-rows-[minmax(0,1fr)_280px] max-[1023px]:grid-rows-[minmax(0,1fr)_230px]" : "grid-rows-[minmax(0,1fr)_37px]"}`}>
-          <div className="relative min-h-0 min-w-0 bg-surface-sunken"><SolarMap /></div>
+        <section aria-label="Map and tradeoffs" className={`grid min-h-0 min-w-0 ${!bottomOpen ? "grid-rows-[minmax(0,1fr)_37px]"
+            : bottomTab === "compare" ? "grid-rows-[minmax(0,1fr)_minmax(280px,44%)] max-[1023px]:grid-rows-[minmax(0,1fr)_300px]"
+              : "grid-rows-[minmax(0,1fr)_280px] max-[1023px]:grid-rows-[minmax(0,1fr)_230px]"}`}>
+          <div className="relative min-h-0 min-w-0 bg-surface-sunken"><SolarMap /><CompareTray /></div>
           <div className="min-h-0 min-w-0 border-t border-border bg-surface"><BottomPanel /></div>
         </section>
         <aside
           aria-label="Selected site"
           className={[
             "min-h-0 overflow-y-auto border-l border-border bg-surface",
-            // < 1280: overlay over the map's right edge, only while a site is selected
-            "max-[1279px]:absolute max-[1279px]:inset-y-0 max-[1279px]:right-0 max-[1279px]:z-30 max-[1279px]:w-[380px] max-[1279px]:shadow-[var(--shadow-raised)]",
+            // < 1280: overlay over the map's right edge (stops above the tradeoff/compare panel), only while a site is selected
+            "max-[1279px]:absolute max-[1279px]:top-0 max-[1279px]:right-0 max-[1279px]:z-30 max-[1279px]:w-[380px] max-[1279px]:shadow-[var(--shadow-raised)]",
+            !bottomOpen ? "max-[1279px]:bottom-[37px]" : bottomTab === "compare" ? "max-[1279px]:bottom-[max(280px,44%)]" : "max-[1279px]:bottom-[280px]",
             // < 1024: bottom overlay
-            "max-[1023px]:inset-x-0 max-[1023px]:top-auto max-[1023px]:h-[62%] max-[1023px]:w-full max-[1023px]:border-l-0 max-[1023px]:border-t",
+            "max-[1023px]:inset-x-0 max-[1023px]:top-auto max-[1023px]:bottom-0 max-[1023px]:h-[62%] max-[1023px]:w-full max-[1023px]:border-l-0 max-[1023px]:border-t",
             selectedId ? "" : "max-[1279px]:hidden",
           ].join(" ")}
         >

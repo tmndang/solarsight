@@ -11,64 +11,93 @@ const panel = (page) => page.locator('aside[aria-label="Selected site"]');
 const numbers = async (page) => (await funnelText(page)).match(/\d+/g).map(Number);
 const mapReady = (page) => page.waitForFunction(() => window.__ssMap && window.__ssMap.loaded(), null, { timeout: 30000 });
 
+const tray = (page) => page.locator('section[aria-label="Compare"]');
+const why = (page) => page.locator('section[aria-label="Why they differ"]');
+const cmpSlots = (page) => page.evaluate(() => [...new Set(window.__ssMap.querySourceFeatures("cmp-pt").map((f) => f.properties.slot))].sort().join("")); // dedupe: one copy per tile
+const chartBadges = (page) => page.evaluate(() => [...document.querySelectorAll(".recharts-wrapper text")].filter((t) => /^[AB]$/.test(t.textContent)).map((t) => t.textContent).sort().join(""));
+const panelTitle = (page) => panel(page).locator("h2").first().innerText();
+
+// The judge demo (spec §41), driven only through the UI from a fresh load.
 async function demo(run, opts) {
   console.log(`\n== Demo run ${run}${opts.blockBasemap ? " (basemap blocked)" : ""}`);
   const { browser, page, errors } = await launch(opts);
   const t0 = Date.now();
   await page.goto(URL, { waitUntil: "domcontentloaded" });
   await mapReady(page);
-  // 1-2 default scenario + funnel
+  // 1 establish the project
   ok((await page.getByRole("radio", { name: "10 MW" }).getAttribute("data-state")) === "on", "default project size is 10 MW");
+  ok((await page.locator("#proj-h").innerText()).toUpperCase() === "PROJECT REQUIREMENTS", "controls are titled Project requirements");
   ok(JSON.stringify(await numbers(page)) === JSON.stringify([434, 361, 75, 10, 2]), `funnel 434 → 361 → 75 → 2 (got ${await numbers(page)})`);
   ok((await funnelText(page)).includes("Pass baseline land screen"), "funnel uses 'Pass baseline land screen'");
-  // 3 frontier
-  const frontierList = await page.locator("text=Pareto frontier (2)").count();
-  ok(frontierList === 1, "frontier quick list shows 2 sites");
+  // 2 geography
   const fstate = await page.evaluate(([a, b]) => [a, b].map((id) => window.__ssMap.querySourceFeatures("cand-pt", { filter: ["==", ["get", "site_id"], id] })[0]?.properties.ui_state), [SINGER, WESTPOINT]);
   ok(fstate.every((s) => s === "frontier"), "map renders Singer Site + WestPoint as frontier");
-  // 4 select Singer
+  // 3 select Singer
   await page.getByRole("button", { name: /^.*Singer Site/ }).first().click();
   await page.waitForTimeout(300);
   let txt = await panel(page).innerText();
-  ok(txt.includes("Singer Site") && txt.includes("35.7 ac") && txt.includes("36.2 ac") && /FITS YOUR 10 MW PROJECT/.test(txt), "Singer Site fits 10 MW: needs 35.7 ac, has 36.2 ac");
-  // 5 dominated candidate + explanation + compare
-  await page.goto(`${URL}/?site=${CAROLINA}`, { waitUntil: "domcontentloaded" });
-  await mapReady(page);
+  ok(/FITS YOUR 10 MW PROJECT/.test(txt) && txt.includes("35.7 ac") && txt.includes("36.2 ac") && txt.includes("+0.5 ac"), "Singer fits 10 MW: required 35.7, available 36.2, margin +0.5 ac");
+  ok(txt.includes("PARETO FRONTIER") && txt.includes("No other feasible candidate is at least as good on both active objectives"), "Singer: Pareto frontier with non-superlative explanation");
+  ok(!/\bbest\b|optimal|recommended|score/i.test(txt), "no 'best/optimal/recommended/score' language in the site panel");
+  ok(await tray(page).count() === 0, "selecting a site does not add it to Compare");
+  // 4 geospatial computation: transmission geometry
+  await panel(page).getByRole("button", { name: "Show on map" }).click(); await page.waitForTimeout(1200);
+  const roles = await page.evaluate(() => [...new Set(window.__ssMap.querySourceFeatures("sel-ctx").map((f) => f.properties.role))].sort().join(","));
+  ok(roles === "connector,line,site", `Singer: mapped line + measured shortest segment drawn (${roles})`);
+  // 5 select a dominated candidate from the chart
+  await page.locator('g[role="button"][aria-label^="Carolina Creosoting"]').click(); await page.waitForTimeout(400);
   txt = await panel(page).innerText();
-  ok(/Dominated by\s*Singer Site/.test(txt), "Carolina Creosoting dominated by Singer Site");
-  ok(txt.includes("0.03 km closer to mapped ≥69 kV transmission (0.03 km vs 0.06 km)") && txt.includes("0.34° flatter on usable land (0.42° vs 0.76°)"), "explanation states both real differences");
-  await page.getByRole("button", { name: /Compare these sites/ }).click();
-  await page.waitForTimeout(300);
-  const cmp = await page.locator("table").filter({ hasText: "Fits your project" }).innerText();
-  ok(cmp.includes("Singer Site") && cmp.includes("Carolina Creosoting"), "compare tab shows both sites");
-  // 6 linked views: chart hover -> map feature-state, chart click -> selection
-  await page.getByRole("tab", { name: "Tradeoffs" }).click();
-  const pt = page.locator('g[role="button"][aria-label^="Singer Site"]');
+  ok(txt.includes("STRONG ALTERNATIVE") && /DOMINATED BY\s*Singer Site/.test(txt), "Carolina: strong alternative, dominated by Singer Site");
+  ok(txt.includes("0.03 km closer to mapped ≥69 kV transmission") && txt.includes("0.34° flatter on usable land (0.42° vs 0.76°)"), "dominance states the actual differences");
+  ok(await tray(page).count() === 0, "Compare still empty (membership is explicit)");
+  // 6 compare with dominator (one action)
+  await panel(page).getByRole("button", { name: "Compare with Singer Site" }).click(); await page.waitForTimeout(600);
+  let t = await tray(page).innerText();
+  ok(/A\s*Singer Site/.test(t) && /B\s*Carolina Creosoting/.test(t), "tray: Ⓐ Singer Site, Ⓑ Carolina Creosoting");
+  ok((await page.getByRole("tab", { name: /Compare/ }).getAttribute("data-state")) === "active", "Compare opens");
+  let w = await why(page).innerText();
+  ok(/WHY\s*A\s*DOMINATES\s*B/i.test(w) && w.includes("Singer Site is at least as good on every active objective and strictly better on at least one."), "Compare explains why Ⓐ dominates Ⓑ");
+  ok(w.includes("Choosing Carolina Creosoting Corp. instead of Singer Site gives up 0.03 km of transmission proximity and 0.34° of flatter usable land"), "plain-language consequence with actual differences");
+  await page.getByRole("button", { name: "Show both on map" }).click(); await page.waitForTimeout(1200);
+  ok(await cmpSlots(page) === "AB", `Show both on map frames Ⓐ and Ⓑ with map badges (${await cmpSlots(page)})`);
+  ok(await chartBadges(page) === "", "chart badges hidden while the Compare tab is shown"); // chart is the other tab
+  await page.getByRole("tab", { name: "Tradeoffs" }).click(); await page.waitForTimeout(300);
+  ok(await chartBadges(page) === "AB", `chart marks Ⓐ and Ⓑ (${await chartBadges(page)})`);
+  // 7 frontier vs frontier tradeoff
+  await tray(page).getByRole("button", { name: "Singer Site", exact: true }).click(); await page.waitForTimeout(400);
+  ok(await panelTitle(page) === "Singer Site", "tray name selects the site");
+  await panel(page).getByRole("button", { name: /Compare with WestPoint/ }).click(); await page.waitForTimeout(600);
+  w = await why(page).innerText();
+  ok(/WHY BOTH ARE ON THE FRONTIER/i.test(w) && w.includes("Neither candidate dominates the other."), "frontier vs frontier: neither dominates");
+  ok(/SINGER SITE[\s\S]*Farther from mapped transmission[\s\S]*Flatter usable terrain[\s\S]*WESTPOINT[\s\S]*Better grid proximity[\s\S]*Intersects site boundary[\s\S]*Steeper usable terrain/i.test(w), "each site wins one objective, with values");
+  ok(w.includes("Improving one objective requires sacrificing the other."), "tradeoff stated without calling either better");
+  t = await tray(page).innerText();
+  ok(/A\s*Singer Site/.test(t) && /B\s*WestPoint/.test(t), "tray: Ⓐ Singer Site, Ⓑ WestPoint");
+  // linked views: chart hover <-> map
+  await page.getByRole("tab", { name: "Tradeoffs" }).click(); await page.waitForTimeout(300);
+  const pt = page.locator('g[role="button"][aria-label^="WestPoint"]');
   await pt.hover(); await page.waitForTimeout(200);
-  ok((await page.evaluate((id) => window.__ssMap.getFeatureState({ source: "cand-pt", id }).hover, SINGER)) === true, "chart hover highlights the map site");
-  await pt.click(); await page.waitForTimeout(200);
-  ok((await panel(page).locator("h2").first().innerText()) === "Singer Site", "chart click selects the site globally");
-  // presenter zooms back out before hovering the map (WestPoint may be off-screen after the fly to Singer)
-  await page.evaluate(() => new Promise((r) => { const m = window.__ssMap; m.once("idle", r); m.jumpTo({ center: [-79.4, 35.4], zoom: 6.6 }); }));
-  const westPt = await page.evaluate((id) => { const m = window.__ssMap; const f = m.querySourceFeatures("cand-pt", { filter: ["==", ["get", "site_id"], id] })[0]; const r = m.getContainer().getBoundingClientRect(); const p = m.project(f.geometry.coordinates); return { x: r.left + p.x, y: r.top + p.y }; }, WESTPOINT);
-  await page.mouse.move(westPt.x, westPt.y); await page.waitForTimeout(250);
-  ok((await page.locator('g[role="button"][aria-label^="WestPoint"]').count()) === 1 && (await page.evaluate(() => document.querySelectorAll("svg circle[stroke-width='1.5']").length)) >= 1, "map hover rings the chart point");
+  ok((await page.evaluate((id) => window.__ssMap.getFeatureState({ source: "cand-pt", id }).hover, WESTPOINT)) === true, "chart hover highlights the map site");
   await page.mouse.move(5, 300);
-  // 7 switch to 20 MW with Singer selected
-  await page.getByRole("radio", { name: "20 MW" }).click();
-  await page.waitForTimeout(300);
+  // 8 change project requirements with Singer selected and A/B in Compare
+  await page.getByRole("tab", { name: /Compare/ }).click();
+  await page.getByRole("radio", { name: "20 MW" }).click(); await page.waitForTimeout(400);
   txt = await panel(page).innerText();
-  ok(txt.includes("Singer Site") && txt.includes("DOESN'T FIT YOUR 20 MW PROJECT") && txt.includes("71.4 ac") && txt.includes("35.2 ac"), "Singer stays selected: doesn't fit 20 MW, needs 71.4, shortfall 35.2");
+  ok(await panelTitle(page) === "Singer Site" && txt.includes("DOESN'T FIT YOUR 20 MW PROJECT") && txt.includes("71.4 ac") && txt.includes("36.2 ac") && txt.includes("35.2 ac"), "Singer stays selected: doesn't fit 20 MW (71.4 / 36.2 / shortfall 35.2)");
   ok(JSON.stringify(await numbers(page)) === JSON.stringify([434, 361, 34, 20, 2]), `20 MW funnel 434 → 361 → 34 → 2 (got ${await numbers(page)})`);
-  // 8 new frontier
+  w = await why(page).innerText();
+  ok(/Singer Site\s*✕ Doesn't fit[\s\S]*shortfall 35\.2 ac[\s\S]*WestPoint Home, Former\s*✓ Fits[\s\S]*margin \+/.test(w), "Compare survives and re-evaluates: Ⓐ doesn't fit, Ⓑ fits");
+  t = await tray(page).innerText();
+  ok(/A\s*Singer Site/.test(t) && /B\s*WestPoint/.test(t), "Compare membership unchanged after project change");
+  await page.getByRole("tab", { name: "Tradeoffs" }).click(); await page.waitForTimeout(300);
   const f20 = await page.locator('g[role="button"][aria-label*="Pareto frontier"]').evaluateAll((els) => els.map((e) => e.getAttribute("aria-label").split(":")[0]).sort());
   ok(f20.length === 2 && f20[0].startsWith("Maxton Feed Mill") && f20[1].startsWith("WestPoint"), `20 MW frontier = WestPoint Home + Maxton Feed Mill (got ${f20.join(", ")})`);
-  // 9 provenance
-  await page.getByRole("button", { name: /Open methodology/ }).click();
-  await page.waitForTimeout(300);
+  ok((await page.locator('g[role="button"][aria-label^="Singer Site"]').getAttribute("aria-label")).includes("doesn't fit"), "chart keeps Singer plotted as doesn't fit");
+  // provenance
+  await page.getByRole("button", { name: /Open methodology/ }).click(); await page.waitForTimeout(300);
   ok((await page.getByRole("dialog").innerText()).includes("What SolarSight is"), "methodology opens in-app");
   await page.keyboard.press("Escape"); await page.waitForTimeout(200);
-  ok((await page.getByRole("dialog").count()) === 0 && (await panel(page).locator("h2").first().innerText()) === "Singer Site", "methodology closes; selection preserved");
+  ok((await page.getByRole("dialog").count()) === 0 && await panelTitle(page) === "Singer Site", "methodology closes; selection preserved");
   ok(errors.length === 0, `no page errors (${errors.join(" | ")})`);
   console.log(`  (run took ${((Date.now() - t0) / 1000).toFixed(1)} s of automation)`);
   await browser.close();
@@ -90,8 +119,8 @@ async function edgeCases() {
   }
   await page.getByRole("radio", { name: "10 MW" }).click();
   for (const [g, n] of [["5", 55], ["15", 83], ["10", 75]]) {
-    await page.getByRole("radio", { name: `${g}% grade`, exact: true }).click();
-    ok((await numbers(page))[2] === n, `${g}% grade → ${n} fit at 10 MW`);
+    await page.getByRole("radio", { name: `${g}%`, exact: true }).click();
+    ok((await numbers(page))[2] === n, `${g}% max grade → ${n} fit at 10 MW`);
   }
   await page.getByRole("switch", { name: /Exclude NWI/ }).click();
   ok((await numbers(page))[2] === 82, "NWI included → 82 fit at 10 MW");
@@ -106,7 +135,7 @@ async function edgeCases() {
   await page.goto(`${URL}/?site=${WESTPOINT}`, { waitUntil: "domcontentloaded" });
   await mapReady(page); await page.waitForTimeout(600);
   const txt = await panel(page).innerText();
-  ok(txt.includes("Mapped ≥69 kV line intersects site boundary") && !txt.includes("0.00 km"), "zero grid distance reads 'Mapped ≥69 kV line intersects site boundary', never 0.00 km");
+  ok(txt.includes("Mapped ≥69 kV transmission intersects site boundary") && !txt.includes("0.00 km"), "zero grid distance reads 'Mapped ≥69 kV transmission intersects site boundary', never 0.00 km");
   ok((await page.locator(".recharts-xAxis-tick-labels .recharts-cartesian-axis-tick-value").first().textContent()) === "Intersects", "chart zero tick reads 'Intersects'");
   ok((await page.locator('g[role="button"][aria-label^="WestPoint"]').getAttribute("aria-label")).includes("intersects site boundary"), "chart point accessible name states intersection");
   await panel(page).getByRole("button", { name: "Show on map" }).click(); await page.waitForTimeout(1200);
@@ -119,8 +148,20 @@ async function edgeCases() {
   roles = await page.evaluate(() => [...new Set(window.__ssMap.querySourceFeatures("sel-ctx").map((f) => f.properties.role))].sort().join(","));
   ok(roles === "connector,line,site", `non-zero site shows line + shortest-distance connector (${roles})`);
   ok((await panel(page).innerText()).includes("0.06 km"), "non-zero distance still shown in km");
+  // explicit membership: Add to Compare, ✓ In Compare, full at two
+  await panel(page).getByRole("button", { name: "Add to Compare" }).click();
+  ok(/A\s*Carolina Creosoting/.test(await tray(page).innerText()), "Add to Compare puts the site in slot Ⓐ");
+  ok(await panel(page).getByRole("button", { name: /In Compare/ }).count() === 1, "button changes to ✓ In Compare");
+  ok((await tray(page).innerText()).includes("Select another site to compare"), "tray prompts for a second site");
+  await page.locator('g[role="button"][aria-label^="WestPoint"]').click(); await page.waitForTimeout(300);
+  await panel(page).getByRole("button", { name: "Add to Compare" }).click();
+  await page.locator('g[role="button"][aria-label^="Singer Site"]').click(); await page.waitForTimeout(300);
+  ok(await panel(page).getByRole("button", { name: "Add to Compare" }).isDisabled(), "third site cannot be added until one is removed");
+  await tray(page).getByRole("button", { name: "Remove Carolina Creosoting Corp. from Compare" }).click();
+  ok(/A\s*Select another site[\s\S]*B\s*WestPoint/.test(await tray(page).innerText()), "removing Ⓐ keeps Ⓑ's identity");
+  await page.getByRole("button", { name: "Clear" }).click().catch(async () => { await tray(page).getByRole("button", { name: /Remove WestPoint/ }).click(); });
   // no-results: quarries @ 20 MW
-  await page.getByRole("combobox", { name: "Candidate set" }).click();
+  await page.getByRole("combobox", { name: "Candidate type" }).click();
   await page.getByRole("option", { name: /Quarries/ }).click();
   await page.getByRole("radio", { name: "20 MW" }).click();
   await page.waitForTimeout(200);

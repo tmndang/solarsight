@@ -721,8 +721,9 @@ Avoid in the main path: Dorothea Dix Park (a city park; use only to illustrate "
 ## Amendment A1 — zero grid distance is a geometric state (post-freeze)
 
 * **Meaning:** `grid_line_distance_km === 0` means a mapped ≥69 kV line intersects the site boundary.
-* **Text:** it is never shown as "0.00 km". The UI shows "Mapped ≥69 kV line intersects site
-  boundary", or "Intersects site boundary" under a "Mapped ≥69 kV line" label.
+* **Text:** it is never shown as "0.00 km". The UI shows "Mapped ≥69 kV transmission intersects
+  site boundary", or "Intersects site boundary" / "Intersects" where a label already names the line.
+  Non-zero values read "1.42 km from site boundary"; a tiny non-zero value reads "< 0.01 km".
 * **Explanations:** dominance text says "a mapped ≥69 kV line intersecting its boundary…".
 * **Tradeoff chart:** these sites keep their true x = 0, and the zero tick reads "Intersects".
 * **Selected site on the map:**
@@ -736,3 +737,50 @@ Avoid in the main path: Dorothea Dix Park (a city park; use only to illustrate "
 * **Methodology:** states that grid distance is polygon-boundary-to-line and only a proximity
   screening proxy. EPA's NC brownfield distances are described as boundary-based, not point-based.
 * **Pareto:** the calculation is unchanged. Zero-distance sites are ties on that objective.
+
+## Amendment A2 — final product functionality (Compare overhaul; post-freeze)
+
+The methodology, Pareto objectives and golden outputs are unchanged. This amendment changes presentation and
+interaction only.
+
+* **Project requirements:** the left rail is titled "Project requirements" and has these controls:
+  * Project size (MW AC);
+  * Maximum terrain grade (5/10/15%);
+  * Wetland screening;
+  * Candidate type;
+  * an "Optional constraints" disclosure holding the former "More filters".
+
+  The funnel keeps the stage "Pass baseline land screen".
+* **Selected-site panel**, in order:
+  1. header with **Add to Compare** / **✓ In Compare Ⓐ|Ⓑ**;
+  2. **project fit** banner: FITS / DOESN'T FIT YOUR N MW PROJECT, with the reason;
+  3. required usable land, available usable land, then land margin or shortfall;
+  4. **Pareto status**: frontier, strong alternative, feasible (dominated), or not in the tradeoff analysis, with the active objective values.
+     * Frontier sites show the non-superlative frontier explanation and "Compare with ⟨other frontier site⟩".
+     * Dominated sites show "DOMINATED BY ⟨dominator⟩", "⟨dominator⟩ is:" with the real differences, and **Compare with ⟨dominator⟩**.
+  5. SolarSight analysis, then EPA historical and DEQ source sections.
+* **Compare is A ↔ B:**
+  * Membership is explicit: selecting a site never adds it to Compare or removes one.
+  * There are two slots, Ⓐ and Ⓑ. The letters are identities, not ranks, and stay stable when the other slot is removed.
+  * A third site cannot be added until one is removed.
+  * "Compare with ⟨dominator⟩" sets Ⓐ to the dominator and Ⓑ to the dominated site, then opens Compare, in one action.
+* **Compare tray:** a persistent "Compare" card over the map's top-left lists Ⓐ / Ⓑ with remove buttons and
+  "Select another site to compare". With two sites it offers "Compare sites →".
+* **Compare panel** (bottom workspace, grows to ~44% height):
+  * Table:
+    * project fit: fits, required land, available land, margin/shortfall;
+    * active tradeoffs: grid proximity and mean usable slope, with ✓ on the better value;
+    * environmental context: NWI overlap, FEMA not assessed;
+    * historical EPA distance, labelled as not used in this decision.
+  * "Why they differ" box (`lib/decision/decision.ts`):
+    * **Why Ⓐ dominates Ⓑ:** per-objective values, the dominance definition, and "Choosing ⟨B⟩ instead of ⟨A⟩ gives up …, with no gain on either active objective."
+    * **Why both are on the frontier / Why neither dominates:** ✓/✕ per objective with values, and "Improving one objective requires sacrificing the other."
+    * **Why they can't be traded off:** shown when a site doesn't fit or is screened; it gives the fit, required/available land and margin/shortfall for each site.
+* **Dynamic behaviour:**
+  * Changing project requirements recomputes everything, including the selected site and both compared sites.
+  * Neither the selection nor Compare is cleared.
+  * There is no scenario diff or changelog.
+* **Linked identities:**
+  * Map: Ⓐ/Ⓑ canvas badges next to the points (they work without a glyph server), and "Show both on map" frames both sites.
+  * Chart: Ⓐ/Ⓑ badges on the points. Compared sites that no longer fit stay plotted, dashed, as "doesn't fit".
+* **Below 1280 px:** the overlaid site panel stops above the tradeoff/compare panel, so the comparison stays visible.

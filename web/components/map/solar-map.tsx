@@ -11,7 +11,7 @@ import { setWorkerUrl, type Map as MaplibreMap } from "maplibre-gl";
 import { useApp } from "@/store/app-store";
 import { useScenarioResult } from "@/lib/data/load";
 import { CARTO_DARK, DIAMOND_ICON, FALLBACK_STYLE, INTERACTIVE_LAYERS, LABEL_LAYER, NC_BOUNDS,
-  SELECTED_CONTEXT_LAYERS, candidateLayers, makeDiamond } from "./map-style";
+  COMPARE_LAYER, SELECTED_CONTEXT_LAYERS, candidateLayers, compareIcon, makeCompareBadge, makeDiamond } from "./map-style";
 import { MapHoverCard } from "./map-hover-card";
 import { MapLegend } from "./map-legend";
 import { NoResultsOverlay } from "./no-results-overlay";
@@ -46,6 +46,8 @@ export default function SolarMap() {
   const flyToken = useApp((s) => s.flyToken);
   const fitToken = useApp((s) => s.fitToken);
   const gridContext = useApp((s) => s.gridContext);
+  const fitIds = useApp((s) => s.fitIds);
+  const compare = useApp((s) => s.compare);
   const select = useApp((s) => s.select);
   const hover = useApp((s) => s.hover);
   const basemap = useApp((s) => s.basemap);
@@ -108,6 +110,15 @@ export default function SolarMap() {
     return fc;
   }, [selectedId, features, gridContext]);
 
+  // compared sites (A/B identity badges next to their points)
+  const cmpData = useMemo(() => ({
+    type: "FeatureCollection",
+    features: (["A", "B"] as const).flatMap((slot) => {
+      const p = compare[slot] ? byId.get(compare[slot]!) : undefined;
+      return p ? [{ type: "Feature", geometry: { type: "Point", coordinates: [p.longitude, p.latitude] }, properties: { slot } }] : [];
+    }),
+  }) as FeatureCollection, [compare, byId]);
+
   // ---- basemap loading / fallback ----------------------------------------------------
   const [style, setStyle] = useState<string | typeof FALLBACK_STYLE>(CARTO_DARK);
   const fallBack = useCallback(() => {
@@ -122,6 +133,9 @@ export default function SolarMap() {
   const registerIcons = useCallback(() => {
     const m = mapRef.current?.getMap();
     if (m && !m.hasImage(DIAMOND_ICON)) m.addImage(DIAMOND_ICON, makeDiamond(), { pixelRatio: 2 });
+    for (const slot of ["A", "B"] as const) {
+      if (m && !m.hasImage(compareIcon(slot))) m.addImage(compareIcon(slot), makeCompareBadge(slot), { pixelRatio: 2 });
+    }
   }, []);
 
   // ---- feature-state sync for hover/selection (no data re-upload) ---------------------
@@ -162,9 +176,10 @@ export default function SolarMap() {
   useEffect(() => {
     if (!fitToken || !mapObj) return;
     const b: [number, number, number, number] = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const f of selCtxData.features) if (f.geometry.type !== "GeometryCollection") extendBounds(b, f.geometry.coordinates);
+    if (fitIds) for (const f of features) { if (fitIds.includes(f.properties.site_id)) extendBounds(b, f.geometry.coordinates); }
+    else for (const f of selCtxData.features) if (f.geometry.type !== "GeometryCollection") extendBounds(b, f.geometry.coordinates);
     if (!Number.isFinite(b[0])) return;
-    mapObj.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: overlayPadding(mapObj), maxZoom: 15.5,
+    mapObj.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: overlayPadding(mapObj), maxZoom: fitIds ? 13 : 15.5,
       duration: prefersReducedMotion() ? 0 : 700 });
   }, [fitToken, mapObj]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -249,6 +264,11 @@ export default function SolarMap() {
         {pointData && (
           <Source id="cand-pt" type="geojson" data={pointData} promoteId="site_id">
             {candidateLayers(showScreened).filter((l) => l.source === "cand-pt").map((l) => <Layer key={l.id} {...l} />)}
+          </Source>
+        )}
+        {pointData && (
+          <Source id="cmp-pt" type="geojson" data={cmpData}>
+            <Layer {...COMPARE_LAYER} />
           </Source>
         )}
         {labelData && basemap === "ok" && labelFont && (

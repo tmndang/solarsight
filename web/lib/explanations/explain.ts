@@ -1,15 +1,22 @@
 /**
  * Deterministic dominance explanations from the active objectives only (no free text generation).
  * Mirrors the comparison semantics of src/analysis/pareto.py ParetoResult.compare().
+ * Fragments read after "<dominator> is:" — e.g. "0.03 km closer to mapped ≥69 kV transmission (…)".
  */
 import type { CandidateProps } from "@/lib/data/schema";
 import type { ScenarioResult } from "@/lib/scenario/scenario";
-import { fmtKm } from "@/lib/formatting/format";
+import { fmtGridValue, fmtKm, fmtKmNonZero } from "@/lib/formatting/format";
 
 /** Explanations compare small differences: always 2 dp in degrees so 0.34° is not shown as 0.3°. */
-const fmtDeg2 = (v: number) => v.toFixed(2) + "°";
+export const fmtDeg2 = (v: number) => v.toFixed(2) + "°";
+
+export const FRONTIER_EXPLANATION =
+  "No other feasible candidate is at least as good on both active objectives while being strictly better on one.";
+export const DOMINANCE_DEFINITION =
+  "is at least as good on every active objective and strictly better on at least one.";
 
 export type Relation = "better" | "equal" | "worse";
+export type ObjectiveKind = "grid" | "terrain";
 
 export interface ObjectiveComparison {
   key: string;
@@ -19,7 +26,7 @@ export interface ObjectiveComparison {
   /** positive = dominator is better by this much (raw units, minimise objectives) */
   advantage: number;
   relation: Relation;
-  /** human sentence fragment, e.g. "0.03 km closer to mapped transmission (0.03 vs 0.06 km)" */
+  /** fragment that reads after "<dominator> is:" */
   text: string;
 }
 
@@ -28,35 +35,45 @@ export interface DominanceExplanation {
   comparisons: ObjectiveComparison[];
 }
 
-const PHRASES: Record<string, { better: string; same: string; fmt: (v: number) => string; unit: string }> = {
-  grid_line_distance_km: { better: "closer to mapped ≥69 kV transmission", same: "the same distance to mapped transmission", fmt: fmtKm, unit: "km" },
-  terrain: { better: "flatter on usable land", same: "the same mean slope of usable land", fmt: fmtDeg2, unit: "°" },
+export const objectiveKind = (key: string): ObjectiveKind => (key === "grid_line_distance_km" ? "grid" : "terrain");
+
+export const OBJECTIVE_LABEL: Record<ObjectiveKind, string> = {
+  grid: "Mapped ≥69 kV transmission",
+  terrain: "Mean usable slope",
 };
 
-function phraseFor(key: string) {
-  return key.startsWith("usable_mean_slope_deg") ? PHRASES.terrain : PHRASES[key];
+/** A single value in its own units. Grid distance 0 is a geometric state, not "0.00 km". */
+export function objectiveValueText(kind: ObjectiveKind, v: number): string {
+  if (kind === "terrain") return fmtDeg2(v);
+  return fmtGridValue(v);
 }
 
-/** Format a positive difference; if it would display as 0, say "slightly" honestly. */
-function fmtAdvantage(adv: number, key: string): string {
-  const p = phraseFor(key);
-  const shown = p.fmt(adv);
-  const zeroShown = Number.parseFloat(shown) === 0;
-  return zeroShown ? `slightly ${p.better} (< ${p.unit === "km" ? "0.01 km" : "0.01°"})` : `${shown} ${p.better}`;
-}
-
-/**
- * Transmission wording treats 0 as a geometric state (a mapped ≥69 kV line intersects the site boundary),
- * not "0.00 km". Ties at 0 remain ties — the Pareto comparison itself is unchanged.
- */
-function gridText(relation: Relation, a: number, b: number, advantage: number): string {
-  if (relation === "equal") {
-    return a === 0 ? "a mapped ≥69 kV line intersecting its boundary, as does this site"
-      : `the same distance to mapped transmission (both ${fmtKm(a)})`;
+/** Size of an advantage, e.g. "0.03 km closer to mapped ≥69 kV transmission". Tiny differences say "slightly". */
+export function advantageText(kind: ObjectiveKind, adv: number): string {
+  if (kind === "grid") {
+    const shown = fmtKm(adv);
+    return Number.parseFloat(shown) === 0 ? "slightly closer to mapped ≥69 kV transmission (< 0.01 km)"
+      : `${shown} closer to mapped ≥69 kV transmission`;
   }
-  if (relation === "better" && a === 0) return `a mapped ≥69 kV line intersecting its boundary (this site: ${fmtKm(b)} away)`;
-  if (relation === "better") return `${fmtAdvantage(advantage, "grid_line_distance_km")} (${fmtKm(a)} vs ${fmtKm(b)})`;
-  return b === 0 ? `${fmtKm(a)} vs a line intersecting this site's boundary` : `${fmtKm(a)} vs ${fmtKm(b)}`;
+  const shown = fmtDeg2(adv);
+  return Number.parseFloat(shown) === 0 ? "slightly flatter on usable land (< 0.01°)" : `${shown} flatter on usable land`;
+}
+
+/** Fragment comparing a (better or equal) to b, reading after "<a> is:". */
+export function relationText(kind: ObjectiveKind, a: number, b: number): string {
+  const adv = b - a;
+  if (kind === "grid") {
+    if (adv === 0) {
+      return a === 0 ? "tied on transmission: mapped ≥69 kV transmission intersects both site boundaries"
+        : `tied on transmission (both ${fmtKmNonZero(a)} from site boundary)`;
+    }
+    if (adv > 0 && a === 0) return `intersected by mapped ≥69 kV transmission (vs ${fmtKmNonZero(b)} from site boundary)`;
+    if (adv > 0) return `${advantageText("grid", adv)} (${fmtKmNonZero(a)} vs ${fmtKmNonZero(b)} from site boundary)`;
+    return b === 0 ? `${fmtKmNonZero(a)} from site boundary vs intersecting` : `${fmtKmNonZero(a)} vs ${fmtKmNonZero(b)} from site boundary`;
+  }
+  if (adv === 0) return `tied on mean usable slope (both ${fmtDeg2(a)})`;
+  if (adv > 0) return `${advantageText("terrain", adv)} (${fmtDeg2(a)} vs ${fmtDeg2(b)})`;
+  return `${fmtDeg2(a)} vs ${fmtDeg2(b)}`;
 }
 
 export function compareOnObjectives(dom: CandidateProps, site: CandidateProps, keys: string[]): ObjectiveComparison[] {
@@ -65,12 +82,7 @@ export function compareOnObjectives(dom: CandidateProps, site: CandidateProps, k
     const b = site[key as keyof CandidateProps] as number;
     const advantage = b - a; // minimise: lower dominator value = advantage
     const relation: Relation = advantage > 0 ? "better" : advantage < 0 ? "worse" : "equal";
-    const p = phraseFor(key);
-    const text = key === "grid_line_distance_km" ? gridText(relation, a, b, advantage)
-      : relation === "better"
-        ? `${fmtAdvantage(advantage, key)} (${p.fmt(a)} vs ${p.fmt(b)})`
-        : relation === "equal" ? `${p.same} (both ${p.fmt(a)})` : `${p.fmt(a)} vs ${p.fmt(b)}`;
-    return { key, dominatorValue: a, siteValue: b, advantage, relation, text };
+    return { key, dominatorValue: a, siteValue: b, advantage, relation, text: relationText(objectiveKind(key), a, b) };
   });
 }
 

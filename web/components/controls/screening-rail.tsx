@@ -30,8 +30,8 @@ export function ScreeningRail() {
 
   return (
     <div className="flex min-h-full flex-col">
-      <section className="space-y-3 border-b border-border px-4 py-4" aria-labelledby="proj-h">
-        <h2 id="proj-h" className="section-title">Your project</h2>
+      <section className="space-y-4 border-b border-border px-4 py-4" aria-labelledby="proj-h">
+        <h2 id="proj-h" className="section-title">Project requirements</h2>
         <Field label="Project size (MW AC)">
           <Segmented
             label="Project size in megawatts AC"
@@ -39,31 +39,27 @@ export function ScreeningRail() {
             onChange={(v) => setScenario({ targetMwAc: Number(v) })}
             options={SIZES.map((s) => ({ value: String(s), label: `${fmtMwShort(s)} MW` }))}
           />
+          {res && (
+            <p className="meta-text">
+              Needs ≥ <span className="font-mono text-text-secondary">{fmtAc(res.requiredAcres)}</span> of usable land
+              (0.28 MW AC per usable acre)
+            </p>
+          )}
         </Field>
-        {res && (
-          <p className="meta-text">
-            Needs ≥ <span className="font-mono text-text-secondary">{fmtAc(res.requiredAcres)}</span> of usable land
-            (0.28 MW AC per usable acre)
-          </p>
-        )}
-      </section>
-
-      <section className="space-y-4 border-b border-border px-4 py-4" aria-labelledby="screen-h">
-        <h2 id="screen-h" className="section-title">Screening assumptions</h2>
         <Field
-          label="Exclude terrain steeper than"
+          label="Maximum terrain grade"
           tip={<>Percent <b>grade</b> (rise ÷ run). 10% grade ≈ 5.7°. Steeper 10 m pixels are not counted as usable land.
             Site slopes elsewhere are reported in <b>degrees</b>.</>}
         >
           <Segmented
-            label="Terrain exclusion threshold, percent grade"
+            label="Maximum terrain grade, percent"
             value={String(scenario.slopeThresholdPct)}
             onChange={(v) => setScenario({ slopeThresholdPct: Number(v) as SlopeThreshold })}
-            options={[5, 10, 15].map((t) => ({ value: String(t), label: `${t}% grade` }))}
+            options={[5, 10, 15].map((t) => ({ value: String(t), label: `${t}%` }))}
           />
         </Field>
         <Field
-          label="Mapped wetland screening"
+          label="Wetland screening"
           tip="USFWS National Wetlands Inventory (NC imagery largely 1980s). NWI identifies mapped wetland features for screening; it is not a jurisdictional determination."
         >
           <div className="flex items-start gap-2.5">
@@ -71,9 +67,9 @@ export function ScreeningRail() {
             <label htmlFor="nwi" className="text-[13px] leading-5 text-text-primary">Exclude NWI-mapped areas from usable land</label>
           </div>
         </Field>
-        <Field label="Candidate set" tip="NC DEQ brownfield projects are the baseline. Landfill and quarry sets come from mapped OpenStreetMap footprints with limited closure evidence and are exploratory.">
+        <Field label="Candidate type" tip="NC DEQ brownfield projects are the baseline. Landfill and quarry sets come from mapped OpenStreetMap footprints with limited closure evidence and are exploratory.">
           <Select<CandidateSetId>
-            label="Candidate set"
+            label="Candidate type"
             value={scenario.candidateSet}
             onChange={(v) => setScenario({ candidateSet: v })}
             options={(Object.keys(CANDIDATE_SETS) as CandidateSetId[]).map((k) => ({
@@ -81,7 +77,7 @@ export function ScreeningRail() {
             }))}
           />
         </Field>
-        <Disclosure title="More filters">
+        <Disclosure title="Optional constraints">
           <div className="space-y-4 pt-1">
             <CapFilter
               id="gridcap" label="Max distance to mapped transmission" unit="km" min={0.5} max={10} step={0.5} def={2}

@@ -1,6 +1,6 @@
 "use client";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useApp } from "@/store/app-store";
+import { compareCount, useApp } from "@/store/app-store";
 import { useScenarioResult } from "@/lib/data/load";
 import { Button, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/primitives";
 import { fmtMwShort } from "@/lib/formatting/format";
@@ -12,7 +12,7 @@ export function BottomPanel() {
   const setTab = useApp((s) => s.setBottomTab);
   const open = useApp((s) => s.bottomOpen);
   const setOpen = useApp((s) => s.setBottomOpen);
-  const nCompare = useApp((s) => s.compareIds.length);
+  const nCompare = useApp((s) => compareCount(s.compare));
   const res = useScenarioResult();
   const f = res?.funnel;
   return (

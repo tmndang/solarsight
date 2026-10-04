@@ -15,7 +15,7 @@ import type { UiState } from "@/lib/scenario/scenario";
 import { STATE_COLOR, STATE_LABEL } from "@/components/shared/status";
 import { GRID_INTERSECTS, fmtDeg, fmtGridValue } from "@/lib/formatting/format";
 
-interface Pt { id: string; name: string; x: number; y: number; state: UiState; infeasible?: boolean; sel?: boolean; hov?: boolean; label?: string; dy?: number }
+interface Pt { id: string; name: string; x: number; y: number; state: UiState; infeasible?: boolean; sel?: boolean; hov?: boolean; label?: string; dy?: number; slot?: "A" | "B" }
 interface ShapeProps { cx?: number; cy?: number; payload: Pt }
 
 const X_TICKS = [0, 0.25, 0.5, 1, 2, 4, 8, 12, 16, 24];
@@ -39,7 +39,7 @@ function PointShape({ cx, cy, payload }: ShapeProps) {
     <g
       role="button"
       tabIndex={-1}
-      aria-label={`${payload.name}: ${payload.infeasible ? "doesn't fit this project" : STATE_LABEL[payload.state]}, ${payload.x === 0 ? "mapped ≥69 kV line intersects site boundary" : `${payload.x.toFixed(2)} km`}, ${payload.y.toFixed(2)}°`}
+      aria-label={`${payload.name}: ${payload.infeasible ? "doesn't fit this project" : STATE_LABEL[payload.state]}, ${payload.x === 0 ? "mapped ≥69 kV transmission intersects site boundary" : `${payload.x.toFixed(2)} km`}, ${payload.y.toFixed(2)}°`}
       style={{ cursor: "pointer" }}
       onMouseEnter={() => useApp.getState().hover(payload.id, "chart")}
       onMouseLeave={() => { if (useApp.getState().hovered?.source === "chart") hover(null); }}
@@ -66,6 +66,19 @@ const renderRing = (p: unknown) => {
   );
 };
 
+/** Ⓐ/Ⓑ compare identity badge, upper-left of the point (same identity as map and Compare panel). */
+const renderBadge = (p: unknown) => {
+  const { cx, cy, payload } = p as ShapeProps;
+  if (cx === undefined || cy === undefined || !payload.slot) return <g />;
+  const x = cx - 11, y = cy - 11;
+  return (
+    <g pointerEvents="none" aria-hidden>
+      <circle cx={x} cy={y} r={8} fill="var(--selected)" stroke="var(--surface)" strokeWidth={2} />
+      <text x={x} y={y + 3.5} textAnchor="middle" fontSize={10} fontWeight={700} fill="var(--surface)">{payload.slot}</text>
+    </g>
+  );
+};
+
 const renderLabel = (p: unknown) => {
   const { cx, cy, payload } = p as ShapeProps;
   if (cx === undefined || cy === undefined) return <g />;
@@ -81,6 +94,7 @@ export function TradeoffChart() {
   const byId = useApp((s) => s.data.byId);
   const selectedId = useApp((s) => s.selectedId);
   const hoverId = useApp((s) => s.hovered?.id ?? null);
+  const compare = useApp((s) => s.compare);
 
   const base = useMemo(() => {
     if (!res) return { points: [] as Pt[], xMax: 1, yMax: 1 };
@@ -92,20 +106,30 @@ export function TradeoffChart() {
     return { points: pts, xMax: Math.max(1, ...pts.map((p) => p.x)), yMax: Math.max(1, ...pts.map((p) => p.y)) };
   }, [res, byId]);
 
-  // selected site is plotted even when it no longer fits (dashed, "doesn't fit")
-  const extra: Pt | null = useMemo(() => {
-    if (!res || !selectedId || res.results.get(selectedId)?.screenEligible) return null;
-    const c = byId.get(selectedId);
-    const y = c?.[res.terrainKey];
-    if (!c || c.grid_line_distance_km === null || y === null || y === undefined) return null;
-    return { id: c.site_id, name: c.name, x: c.grid_line_distance_km, y, state: "screened", infeasible: true };
-  }, [res, selectedId, byId]);
+  // selected and compared sites are plotted even when they no longer fit (dashed, "doesn't fit")
+  const extras: Pt[] = useMemo(() => {
+    if (!res) return [];
+    const ids = [...new Set([selectedId, compare.A, compare.B].filter((x): x is string => !!x))];
+    return ids.flatMap((id) => {
+      if (res.results.get(id)?.screenEligible) return [];
+      const c = byId.get(id);
+      const y = c?.[res.terrainKey];
+      if (!c || c.grid_line_distance_km === null || y === null || y === undefined) return [];
+      return [{ id, name: c.name, x: c.grid_line_distance_km, y, state: "screened" as const, infeasible: true }];
+    });
+  }, [res, selectedId, compare, byId]);
+  const extra = useMemo(() => (extras.length
+    ? { x: Math.max(...extras.map((e) => e.x)), y: Math.max(...extras.map((e) => e.y)) } : null), [extras]);
+  const badges = useMemo(() => [...base.points, ...extras].flatMap((p) => {
+    const slot = compare.A === p.id ? "A" as const : compare.B === p.id ? "B" as const : null;
+    return slot ? [{ ...p, slot }] : [];
+  }), [base, extras, compare]);
+  const all = useMemo(() => (extras.length ? [...base.points, ...extras] : base.points), [base, extras]);
 
-  const all = useMemo(() => (extra ? [...base.points, extra] : base.points), [base, extra]);
   // direct labels (frontier + selected) with greedy vertical de-collision in normalised data space
   const labels = useMemo(() => {
     const xs = Math.sqrt(Math.max(base.xMax, extra?.x ?? 0)), ys = Math.max(base.yMax, extra?.y ?? 0);
-    const ls = all.filter((p) => p.state === "frontier" || p.id === selectedId)
+    const ls = all.filter((p) => p.state === "frontier" || p.id === selectedId || p.id === compare.A || p.id === compare.B)
       .map((p) => ({ ...p, nx: Math.sqrt(p.x) / xs, ny: p.y / ys }))
       .sort((a, b) => a.ny - b.ny); // bottom-most first; stack later labels upward (free space)
     const placed: { nx: number; ny: number; dy: number }[] = [];
@@ -115,7 +139,7 @@ export function TradeoffChart() {
       placed.push({ nx: p.nx, ny: p.ny, dy });
       return { ...p, dy };
     });
-  }, [all, selectedId, base, extra]);
+  }, [all, selectedId, base, extra, compare]);
   const rings = useMemo(() => all.filter((p) => p.id === selectedId || p.id === hoverId).map((p) => ({
     ...p, sel: p.id === selectedId, hov: p.id === hoverId,
     label: `${p.name} · ${p.x === 0 ? GRID_INTERSECTS : fmtGridValue(p.x)} · ${fmtDeg(p.y)}`,
@@ -145,6 +169,7 @@ export function TradeoffChart() {
           <Scatter data={all} isAnimationActive={false} shape={renderPoint} />
           <Scatter data={rings} isAnimationActive={false} shape={renderRing} />
           <Scatter data={labels} isAnimationActive={false} shape={renderLabel} />
+          <Scatter data={badges} isAnimationActive={false} shape={renderBadge} />
         </ScatterChart>
       </ResponsiveContainer>
       <p className="pointer-events-none absolute right-8 top-1 text-[10px] text-text-muted">← closer to transmission · ↓ flatter usable land</p>

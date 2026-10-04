@@ -127,7 +127,7 @@ objective it would let differences of about 2% (inside model error) decide domin
 **Zero is a geometric state.** `grid_line_distance_km == 0` means a mapped >= 69 kV line intersects
 the site boundary. This holds for all 109 zero-distance candidates; none has a line lying only
 inside the polygon (checked in `scripts/export_grid_context.py`). The app never shows it as
-"0.00 km". It reads "Mapped ≥69 kV line intersects site boundary", and the tradeoff chart keeps
+"0.00 km". It reads "Mapped ≥69 kV transmission intersects site boundary", and the tradeoff chart keeps
 these sites at their true x = 0 under an "Intersects" tick. Sites that all intersect a line are tied
 on this objective. The Pareto calculation is deliberately left unchanged, so terrain separates them.
 For the selected site, the app draws the nearest line (and any line crossing the site) and, when the

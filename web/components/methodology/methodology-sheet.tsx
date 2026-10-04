@@ -78,7 +78,7 @@ export function MethodologySheet() {
             centroid or address point: it is the minimum planar distance (NAD83 / North Carolina, metres) between the current site
             polygon and the nearest OpenStreetMap power line tagged ≥ {a.grid_min_kv} kV. Lines without a voltage tag are excluded.</P>
           <P>A distance of exactly 0 is a geometric state, not a rounded number: a mapped ≥{a.grid_min_kv} kV line intersects the site
-            boundary (true for every zero in this dataset). The app shows it as &ldquo;Mapped ≥69 kV line intersects site boundary&rdquo;,
+            boundary (true for every zero in this dataset). The app shows it as &ldquo;Mapped ≥69 kV transmission intersects site boundary&rdquo;,
             and the tradeoff chart keeps those sites at x = 0 under an &ldquo;Intersects&rdquo; tick. Sites that all intersect a line are
             tied on this objective; the Pareto comparison treats them as ties and separates them by terrain only.</P>
           <P>When a site is selected, the map draws the nearest mapped line (and any other line crossing the site) and, if the distance is

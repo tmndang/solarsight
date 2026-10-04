@@ -9,6 +9,13 @@ import type { CandidateFeature, CandidateProps, GridContextFeature, Meta } from 
 import { DEFAULT_SCENARIO, type Scenario } from "@/lib/scenario/scenario";
 
 export type HoverSource = "map" | "chart" | "list";
+/** Compare slots. Letters are identities (never ranks) and stay stable when the other slot is removed. */
+export type CompareSlot = "A" | "B";
+export type CompareSlots = Record<CompareSlot, string | null>;
+export const COMPARE_SLOTS: CompareSlot[] = ["A", "B"];
+export const slotOf = (slots: CompareSlots, id: string): CompareSlot | null =>
+  slots.A === id ? "A" : slots.B === id ? "B" : null;
+export const compareCount = (slots: CompareSlots) => (slots.A ? 1 : 0) + (slots.B ? 1 : 0);
 export type BottomTab = "tradeoffs" | "compare";
 
 interface DataState {
@@ -31,11 +38,13 @@ interface AppState {
   gridContext: GridContextState;
   /** increments when the map should frame the selected site and its transmission context */
   fitToken: number;
+  fitIds: string[] | null;
   scenario: Scenario;
   showScreened: boolean;
   selectedId: string | null;
   hovered: { id: string; source: HoverSource } | null;
-  compareIds: string[];
+  /** explicit A/B comparison membership; selecting a site never changes it */
+  compare: CompareSlots;
   bottomTab: BottomTab;
   bottomOpen: boolean;
   methodologyOpen: boolean;
@@ -45,13 +54,19 @@ interface AppState {
 
   setData: (d: DataState) => void;
   setGridContext: (g: GridContextState) => void;
-  requestFit: () => void;
+  /** frame the selected site + its transmission context, or the given sites */
+  requestFit: (ids?: string[]) => void;
   setScenario: (patch: Partial<Scenario>) => void;
   setShowScreened: (v: boolean) => void;
   select: (id: string | null, opts?: { fly?: boolean }) => void;
   hover: (id: string | null, source?: HoverSource) => void;
+  addToCompare: (id: string) => void;
+  removeFromCompare: (id: string) => void;
   toggleCompare: (id: string) => void;
-  addCompare: (ids: string[]) => void;
+  /** one action: A = dominator, B = the dominated site; opens Compare */
+  compareWithDominator: (siteId: string, dominatorId: string) => void;
+  /** explicit one-click comparison of two sites (A, B); opens Compare */
+  setCompare: (a: string, b: string) => void;
   clearCompare: () => void;
   setBottomTab: (t: BottomTab) => void;
   setBottomOpen: (o: boolean) => void;
@@ -59,17 +74,18 @@ interface AppState {
   setBasemap: (b: AppState["basemap"]) => void;
 }
 
-export const MAX_COMPARE = 3;
+export const MAX_COMPARE = 2;
 
 export const useApp = create<AppState>((set) => ({
   data: { status: "loading", features: [], props: [], byId: new Map(), meta: null },
   gridContext: { status: "loading", bySite: new Map() },
   fitToken: 0,
+  fitIds: null,
   scenario: DEFAULT_SCENARIO,
   showScreened: true,
   selectedId: null,
   hovered: null,
-  compareIds: [],
+  compare: { A: null, B: null },
   bottomTab: "tradeoffs",
   bottomOpen: true,
   methodologyOpen: false,
@@ -78,7 +94,7 @@ export const useApp = create<AppState>((set) => ({
 
   setData: (data) => set({ data }),
   setGridContext: (gridContext) => set({ gridContext }),
-  requestFit: () => set((s) => ({ fitToken: s.fitToken + 1 })),
+  requestFit: (ids) => set((s) => ({ fitToken: s.fitToken + 1, fitIds: ids ?? null })),
   setScenario: (patch) => set((s) => ({ scenario: { ...s.scenario, ...patch } })),
   setShowScreened: (showScreened) => set({ showScreened }),
   select: (id, opts) => set((s) => ({ selectedId: id, flyToken: opts?.fly ? s.flyToken + 1 : s.flyToken })),
@@ -88,17 +104,21 @@ export const useApp = create<AppState>((set) => ({
     if (cur && cur.id === id && cur.source === source) return {}; // no-op: avoids re-render loops
     return { hovered: { id, source } };
   }),
-  toggleCompare: (id) => set((s) => {
-    if (s.compareIds.includes(id)) return { compareIds: s.compareIds.filter((x) => x !== id) };
-    if (s.compareIds.length >= MAX_COMPARE) return {};
-    return { compareIds: [...s.compareIds, id] };
+  addToCompare: (id) => set((s) => {
+    if (slotOf(s.compare, id)) return {};
+    if (!s.compare.A) return { compare: { ...s.compare, A: id } };
+    if (!s.compare.B) return { compare: { ...s.compare, B: id } };
+    return {}; // full: the user must remove a site first (membership is explicit)
   }),
-  addCompare: (ids) => set((s) => {
-    const next = [...s.compareIds];
-    for (const id of ids) if (!next.includes(id)) next.push(id);
-    return { compareIds: next.slice(-MAX_COMPARE), bottomTab: "compare", bottomOpen: true };
+  removeFromCompare: (id) => set((s) => {
+    const slot = slotOf(s.compare, id);
+    return slot ? { compare: { ...s.compare, [slot]: null } } : {};
   }),
-  clearCompare: () => set({ compareIds: [] }),
+  toggleCompare: (id) => (slotOf(useApp.getState().compare, id)
+    ? useApp.getState().removeFromCompare(id) : useApp.getState().addToCompare(id)),
+  compareWithDominator: (siteId, dominatorId) => useApp.getState().setCompare(dominatorId, siteId),
+  setCompare: (a, b) => set({ compare: { A: a, B: b }, bottomTab: "compare", bottomOpen: true }),
+  clearCompare: () => set({ compare: { A: null, B: null } }),
   setBottomTab: (bottomTab) => set({ bottomTab, bottomOpen: true }),
   setBottomOpen: (bottomOpen) => set({ bottomOpen }),
   setMethodologyOpen: (methodologyOpen) => set({ methodologyOpen }),

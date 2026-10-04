@@ -1,15 +1,16 @@
 "use client";
 import { useEffect } from "react";
 import { ArrowRight, Check, ExternalLink, Map as MapIcon, Plus, X } from "lucide-react";
-import { useApp, MAX_COMPARE } from "@/store/app-store";
+import { useApp, MAX_COMPARE, compareCount, slotOf } from "@/store/app-store";
 import { useScenarioResult } from "@/lib/data/load";
-import { explainDominance } from "@/lib/explanations/explain";
+import { explainDominance, fmtDeg2, FRONTIER_EXPLANATION } from "@/lib/explanations/explain";
+import { exclusionText, fmtMargin, projectFit } from "@/lib/decision/decision";
+import { CompareBadge } from "@/components/shared/compare-badge";
 import type { CandidateProps } from "@/lib/data/schema";
-import type { ScenarioResult, SiteResult } from "@/lib/scenario/scenario";
+import type { ScenarioResult, SiteResult, UiState } from "@/lib/scenario/scenario";
 import { Button, Disclosure, InfoTip } from "@/components/ui/primitives";
-import { SourceBadge, StatusGlyph, STATE_LABEL } from "@/components/shared/status";
-import { screenedLabel } from "@/components/map/map-hover-card";
-import { GRID_INTERSECTS, fmtAc, fmtDeg, fmtGridValue, fmtKm, fmtKv, fmtMi, fmtMwh, fmtMwShort, fmtPct, fmtShare, SITE_TYPE_LABEL } from "@/lib/formatting/format";
+import { SourceBadge, StatusGlyph } from "@/components/shared/status";
+import { GRID_INTERSECTS, fmtAc, fmtDeg, fmtKm, fmtKmNonZero, fmtKv, fmtMi, fmtMwh, fmtMwShort, fmtPct, fmtShare, SITE_TYPE_LABEL } from "@/lib/formatting/format";
 import { MetricRow, NotAssessed, SectionHeader } from "./metric";
 import { SiteEmptyState } from "./site-empty-state";
 
@@ -36,7 +37,7 @@ export function SitePanel() {
   const r = res.results.get(c.site_id)!;
   return (
     <article key={c.site_id} aria-label={`Site details: ${c.name}`} className="animate-[slidein_160ms_ease-out]">
-      <SiteHeader c={c} r={r} res={res} />
+      <SiteHeader c={c} />
       <div className="divide-y divide-border">
         <ProjectFit c={c} r={r} res={res} />
         <TradeoffBlock c={c} r={r} res={res} />
@@ -52,15 +53,9 @@ export function SitePanel() {
 }
 
 /* ---------------- header ---------------- */
-function SiteHeader({ c, r, res }: { c: CandidateProps; r: SiteResult; res: ScenarioResult }) {
+function SiteHeader({ c }: { c: CandidateProps }) {
   const select = useApp((s) => s.select);
-  const compareIds = useApp((s) => s.compareIds);
-  const toggleCompare = useApp((s) => s.toggleCompare);
-  const inCompare = compareIds.includes(c.site_id);
   const place = [c.city, `${c.county} Co.`].filter(Boolean).join(" · ");
-  const stateLabel = r.uiState === "screened"
-    ? (r.screenReason === "too_small" ? `Doesn't fit your ${fmtMwShort(res.scenario.targetMwAc)} MW project` : screenedLabel(r.screenReason))
-    : STATE_LABEL[r.uiState];
   return (
     <header className="sticky top-0 z-10 border-b border-border bg-surface px-4 pb-3 pt-4">
       <div className="flex items-start gap-2">
@@ -70,24 +65,36 @@ function SiteHeader({ c, r, res }: { c: CandidateProps; r: SiteResult; res: Scen
         </div>
         <Button variant="ghost" size="icon" aria-label="Clear selection (Esc)" onClick={() => select(null)}><X size={16} /></Button>
       </div>
-      <div className="mt-2.5 flex items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[13px] font-medium text-text-primary">
-          <StatusGlyph state={r.uiState} />
-          <span className={r.screenReason === "too_small" ? "text-danger" : undefined}>{stateLabel}</span>
-          {r.uiState !== "screened" && (
-            <InfoTip label="About this tradeoff state" content={
-              r.uiState === "frontier" ? "No other feasible site is both closer to mapped transmission and flatter on usable land."
-                : r.uiState === "alternative" ? "Would join the frontier if the sites dominating it were unavailable (Pareto layers 2–3). Not a ranking."
-                  : "Another feasible site is at least as good on both objectives and better on one."} />
-          )}
-        </span>
-        <Button variant="outline" size="sm" aria-pressed={inCompare}
-          disabled={!inCompare && compareIds.length >= MAX_COMPARE}
-          onClick={() => toggleCompare(c.site_id)}>
-          {inCompare ? <><Check size={13} aria-hidden /> In compare</> : <><Plus size={13} aria-hidden /> Compare</>}
-        </Button>
-      </div>
+      <div className="mt-2.5"><CompareAction id={c.site_id} /></div>
     </header>
+  );
+}
+
+/** Explicit Compare membership: Add to Compare / ✓ In Compare (A|B). Selecting sites never changes it. */
+function CompareAction({ id }: { id: string }) {
+  const compare = useApp((s) => s.compare);
+  const add = useApp((s) => s.addToCompare);
+  const remove = useApp((s) => s.removeFromCompare);
+  const slot = slotOf(compare, id);
+  if (slot) {
+    return (
+      <Button variant="outline" size="sm" aria-pressed onClick={() => remove(id)} title="Remove from Compare">
+        <Check size={13} aria-hidden /> In Compare <CompareBadge slot={slot} size={16} />
+      </Button>
+    );
+  }
+  if (compareCount(compare) >= MAX_COMPARE) {
+    return (
+      <span className="inline-flex items-center gap-2">
+        <Button variant="outline" size="sm" disabled><Plus size={13} aria-hidden /> Add to Compare</Button>
+        <span className="meta-text">Compare holds two sites. Remove one to add this site.</span>
+      </span>
+    );
+  }
+  return (
+    <Button variant="outline" size="sm" aria-pressed={false} onClick={() => add(id)}>
+      <Plus size={13} aria-hidden /> Add to Compare
+    </Button>
   );
 }
 
@@ -95,72 +102,104 @@ function SiteHeader({ c, r, res }: { c: CandidateProps; r: SiteResult; res: Scen
 function ProjectFit({ c, r, res }: { c: CandidateProps; r: SiteResult; res: ScenarioResult }) {
   const sc = res.scenario;
   const mw = fmtMwShort(sc.targetMwAc);
-  const fits = r.sizeFeasible;
+  const fit = projectFit(r, res);
   const usableDef = `slope ≤ ${sc.slopeThresholdPct}% grade, minus buildings, surface water${sc.excludeNwi ? " and NWI-mapped wetland" : ""}`;
+  const otherReason = r.screenReason !== "too_small" ? exclusionText(r.screenReason, res, c) : null;
   return (
     <section className="px-4 py-3.5" aria-labelledby="fit-h">
-      <SectionHeader title={`Your ${mw} MW AC project`} />
+      <SectionHeader title={`Your ${mw} MW AC project`} right={<SourceBadge kind="derived" />} />
       <h3 id="fit-h" className="sr-only">Project fit</h3>
-      <dl>
-        <MetricRow label="Usable land needed" value={fmtAc(res.requiredAcres)} />
-        <MetricRow label="Usable land available" tip={<InfoTip label="How usable land is measured" content={`10 m pixels inside the boundary with ${usableDef}.`} />}
-          value={r.usableAcres !== null ? fmtAc(r.usableAcres) : undefined} missing={r.usableAcres === null ? "not available" : undefined} />
-        {!fits && r.usableAcres !== null && (
-          <MetricRow label="Shortfall" value={fmtAc(res.requiredAcres - r.usableAcres)} />
-        )}
-      </dl>
-      <div role="status" className={`mt-2 rounded-md border px-3 py-2 ${fits ? "border-success/40 bg-success/5" : "border-danger/40 bg-danger/5"}`}>
-        <p className={`text-[13px] font-semibold tracking-wide ${fits ? "text-success" : "text-danger"}`}>
-          {fits ? `FITS YOUR ${mw} MW PROJECT` : `DOESN'T FIT YOUR ${mw} MW PROJECT`}
+      <div role="status" className={`mb-2 rounded-md border px-3 py-2 ${fit.fits ? "border-success/40 bg-success/5" : "border-danger/40 bg-danger/5"}`}>
+        <p className={`flex items-center gap-1.5 text-[13px] font-semibold tracking-wide ${fit.fits ? "text-success" : "text-danger"}`}>
+          {fit.fits ? <Check size={14} aria-hidden /> : <X size={14} aria-hidden />}
+          {fit.fits ? `FITS YOUR ${mw} MW PROJECT` : `DOESN'T FIT YOUR ${mw} MW PROJECT`}
         </p>
-        {r.maxCapacityMwAc !== null && (
-          <p className="meta-text mt-0.5">Largest project it fits ≈ <span className="font-mono text-text-secondary">{r.maxCapacityMwAc.toFixed(1)} MW AC</span></p>
+        {!fit.fits && (
+          <p className="mt-0.5 text-xs text-text-secondary">
+            {fit.usableAcres === null ? "Usable land could not be measured for this site." : exclusionText("too_small", res, c)}
+          </p>
         )}
       </div>
-      {fits && c.annual_mwh_per_mw_ac !== null && (
-        <dl className="mt-2">
+      <dl>
+        <MetricRow label="Required usable land" value={fmtAc(fit.requiredAcres)} />
+        <MetricRow label="Available usable land" tip={<InfoTip label="How usable land is measured" content={`10 m pixels inside the boundary with ${usableDef}.`} />}
+          value={fit.usableAcres !== null ? fmtAc(fit.usableAcres) : undefined} missing={fit.usableAcres === null ? "not available" : undefined} />
+        {fit.margin !== null && <MetricRow label="Land margin" value={<span className="text-success">{fmtMargin(fit.margin)}</span>} />}
+        {fit.shortfall !== null && <MetricRow label="Shortfall" value={<span className="text-danger">{fmtAc(fit.shortfall)}</span>} />}
+      </dl>
+      {r.maxCapacityMwAc !== null && (
+        <p className="meta-text mt-1">Largest project it fits ≈ <span className="font-mono text-text-secondary">{r.maxCapacityMwAc.toFixed(1)} MW AC</span></p>
+      )}
+      {fit.fits && c.annual_mwh_per_mw_ac !== null && (
+        <dl className="mt-1">
           <MetricRow label="Est. generation of this project" value={fmtMwh(sc.targetMwAc * c.annual_mwh_per_mw_ac)}
-            tip={<InfoTip label="About estimated generation" content="PVWatts v8 on NSRDB typical-year weather, fixed tilt. Planning estimate; about 10% above observed output of NC fixed-tilt plants. Varies only ~2% between candidate sites." />} />
+            tip={<InfoTip label="About estimated generation" content="PVWatts v8 on NSRDB typical-year weather, fixed tilt. Planning estimate; about 10% above observed output of NC fixed-tilt plants. Varies only ~2% between candidate sites. Not a tradeoff objective." />} />
         </dl>
       )}
-      {r.screenReason === "baseline" && (
-        <p className="mt-2 text-xs text-text-secondary">Screened out by the baseline land screen: {c.status_reason}.</p>
-      )}
-      {r.screenReason === "not_in_set" && (
-        <p className="mt-2 text-xs text-text-secondary">Not part of the current candidate set.</p>
-      )}
+      {otherReason && <p className="mt-2 text-xs text-text-secondary">{otherReason}</p>}
     </section>
   );
 }
 
-/* ---------------- tradeoff position / dominance ---------------- */
+/* ---------------- Pareto status / dominance ---------------- */
+const STATUS_HEADING: Record<UiState, string> = {
+  frontier: "PARETO FRONTIER", alternative: "STRONG ALTERNATIVE", feasible: "FEASIBLE — DOMINATED", screened: "NOT IN THE TRADEOFF ANALYSIS",
+};
+
+function ObjectiveValues({ c, res }: { c: CandidateProps; res: ScenarioResult }) {
+  const terrain = c[res.terrainKey];
+  return (
+    <dl className="mt-2">
+      <GridDistanceRow c={c} />
+      <MetricRow label="Mean usable slope" value={terrain !== null ? fmtDeg2(terrain) : undefined}
+        missing={terrain === null ? "not available" : undefined} />
+    </dl>
+  );
+}
+
 function TradeoffBlock({ c, r, res }: { c: CandidateProps; r: SiteResult; res: ScenarioResult }) {
   const byId = useApp((s) => s.data.byId);
   const select = useApp((s) => s.select);
-  const addCompare = useApp((s) => s.addCompare);
-  const terrain = c[res.terrainKey];
+  const compareWithDominator = useApp((s) => s.compareWithDominator);
+  const setCompare = useApp((s) => s.setCompare);
+  const mw = fmtMwShort(res.scenario.targetMwAc);
+  const heading = (
+    <p className="flex items-center gap-1.5 text-[13px] font-semibold tracking-wide text-text-primary">
+      <StatusGlyph state={r.uiState} />{STATUS_HEADING[r.uiState]}
+      {r.uiState === "alternative" && (
+        <InfoTip label="About strong alternatives" content="Pareto layers 2–3: it would join the frontier if the sites dominating it were unavailable. Not a ranking." />
+      )}
+    </p>
+  );
   if (!r.screenEligible) {
     return (
-      <section className="px-4 py-3.5">
-        <SectionHeader title="Tradeoff position" />
-        <p className="text-[13px] text-text-secondary">Not part of the {fmtMwShort(res.scenario.targetMwAc)} MW tradeoff analysis.</p>
+      <section className="px-4 py-3.5" aria-label="Pareto status">
+        <SectionHeader title="Pareto status" right={<SourceBadge kind="derived" />} />
+        {heading}
+        <p className="mt-1 text-[13px] leading-5 text-text-secondary">
+          Only sites that fit your {mw} MW AC project are compared on the active objectives. {exclusionText(r.screenReason, res, c)}
+        </p>
+        <ObjectiveValues c={c} res={res} />
       </section>
     );
   }
-  const values = (
-    <dl className="mt-2">
-      <GridDistanceRow c={c} />
-      <MetricRow label="Mean slope of usable land" value={fmtDeg(terrain!)} />
-    </dl>
-  );
   if (r.uiState === "frontier") {
+    const others = res.frontierIds.filter((id) => id !== c.site_id).slice(0, 2);
     return (
-      <section className="px-4 py-3.5">
-        <SectionHeader title="Tradeoff position" />
-        <p className="text-[13px] leading-5 text-text-secondary">
-          On the frontier: no other site that fits this project is both closer to mapped transmission and flatter on usable land.
-        </p>
-        {values}
+      <section className="px-4 py-3.5" aria-label="Pareto status">
+        <SectionHeader title="Pareto status" right={<SourceBadge kind="derived" />} />
+        {heading}
+        <ObjectiveValues c={c} res={res} />
+        <p className="mt-2 text-[13px] leading-5 text-text-secondary">{FRONTIER_EXPLANATION}</p>
+        {others.length > 0 && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {others.map((id) => (
+              <Button key={id} variant="outline" size="sm" onClick={() => setCompare(c.site_id, id)}>
+                Compare with {byId.get(id)!.name} <ArrowRight size={13} aria-hidden />
+              </Button>
+            ))}
+          </div>
+        )}
       </section>
     );
   }
@@ -168,33 +207,27 @@ function TradeoffBlock({ c, r, res }: { c: CandidateProps; r: SiteResult; res: S
   const dom = byId.get(e.dominatorId)!;
   const domState = res.results.get(dom.site_id)!.uiState;
   return (
-    <section className="px-4 py-3.5" aria-labelledby="why-h">
-      <SectionHeader title="Why this site isn't on the frontier" />
-      <h3 id="why-h" className="sr-only">Dominance explanation</h3>
-      <p className="text-[13px] text-text-secondary">
-        Dominated by{" "}
-        <button type="button" onClick={() => select(dom.site_id, { fly: true })}
-          className="inline-flex items-center gap-1 font-medium text-text-primary underline decoration-border-strong underline-offset-2 hover:decoration-text-secondary">
-          <StatusGlyph state={domState} size={11} />{dom.name}
-        </button>
-      </p>
-      <p className="mt-2 text-xs text-text-muted">Compared with this site, {dom.name} has:</p>
+    <section className="px-4 py-3.5" aria-label="Pareto status">
+      <SectionHeader title="Pareto status" right={<SourceBadge kind="derived" />} />
+      {heading}
+      <ObjectiveValues c={c} res={res} />
+      <p className="mt-3 text-xs font-medium tracking-wide text-text-muted">DOMINATED BY</p>
+      <button type="button" onClick={() => select(dom.site_id, { fly: true })}
+        className="mt-0.5 inline-flex items-center gap-1.5 text-[14px] font-semibold text-text-primary underline decoration-border-strong underline-offset-2 hover:decoration-text-secondary">
+        <StatusGlyph state={domState} size={11} />{dom.name}
+      </button>
+      <p className="mt-2 text-xs text-text-muted">{dom.name} is:</p>
       <ul className="mt-1 space-y-1">
         {e.comparisons.map((cmp) => (
           <li key={cmp.key} className="flex gap-2 text-[13px] leading-5 text-text-primary">
-            <span aria-hidden className="text-text-muted">▸</span>
+            <span aria-hidden className={cmp.relation === "better" ? "text-success" : "text-text-muted"}>{cmp.relation === "better" ? "✓" : "="}</span>
             <span>{cmp.text}</span>
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-xs text-text-secondary">Both fit your {fmtMwShort(res.scenario.targetMwAc)} MW AC project.</p>
-      {r.uiState === "alternative" && (
-        <p className="mt-1 text-xs text-text-secondary">
-          Strong alternative: it would join the frontier if the sites ahead of it were unavailable.
-        </p>
-      )}
-      <Button variant="outline" size="sm" className="mt-3" onClick={() => addCompare([dom.site_id, c.site_id])}>
-        Compare these sites <ArrowRight size={13} aria-hidden />
+      <p className="mt-2 text-xs text-text-secondary">Both fit your {mw} MW AC project.</p>
+      <Button variant="outline" size="sm" className="mt-3" onClick={() => compareWithDominator(c.site_id, dom.site_id)}>
+        Compare with {dom.name} <ArrowRight size={13} aria-hidden />
       </Button>
     </section>
   );
@@ -214,18 +247,18 @@ function GridDistanceRow({ c, detailed = false }: { c: CandidateProps; detailed?
   const tip = detailed ? <InfoTip label="About transmission distance" content={GRID_TIP} /> : undefined;
   const row = d === 0 ? (
     <div className="py-1">
-      <dt className="sr-only">Mapped ≥69 kV line</dt>
+      <dt className="sr-only">Mapped ≥69 kV transmission</dt>
       <dd className="flex items-baseline justify-between gap-3">
         <span className="flex items-center gap-1.5 text-[13px] text-text-primary">
           <span aria-hidden className="inline-block h-0.5 w-3 shrink-0 translate-y-[-3px] rounded bg-grid-line" />
           {GRID_INTERSECTS}{tip}
         </span>
-        {kv && <span className="meta-text shrink-0">{kv}</span>}
+        {kv && !detailed && <span className="meta-text shrink-0">{kv}</span>}
       </dd>
     </div>
   ) : (
-    <MetricRow label={detailed ? "Mapped ≥69 kV transmission line" : "Mapped ≥69 kV line"} tip={tip}
-      value={d !== null ? fmtGridValue(d) : undefined} sub={detailed ? kv : undefined}
+    <MetricRow label="Mapped ≥69 kV transmission" tip={tip}
+      value={d !== null ? fmtKmNonZero(d) : undefined} sub={d !== null ? "from boundary" : undefined}
       missing={d === null ? "not available" : undefined} />
   );
   if (!detailed || d === null) return row;
@@ -235,12 +268,13 @@ function GridDistanceRow({ c, detailed = false }: { c: CandidateProps; detailed?
       {row}
       <div className="flex items-center justify-between gap-2 pb-1">
         <span className="meta-text">
+          {kv ? `Nearest line ${kv}. ` : ""}
           {ctx.status === "loading" ? "Loading line geometry…" : has
-            ? (d === 0 ? "Line shown over the site on the map." : "Line and shortest distance shown on the map.")
+            ? (d === 0 ? "Shown over the site on the map." : "Line and shortest distance on the map.")
             : "Line geometry unavailable."}
         </span>
         {has && (
-          <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs" onClick={requestFit}>
+          <Button variant="ghost" size="sm" className="h-6 shrink-0 whitespace-nowrap px-1.5 text-xs" onClick={() => requestFit()}>
             <MapIcon size={12} aria-hidden /> Show on map
           </Button>
         )}
@@ -262,7 +296,7 @@ function Analysis({ c, res }: { c: CandidateProps; res: ScenarioResult }) {
         <MetricRow label="Mapped ≥69 kV substation"
           value={c.substation_distance_km === null ? undefined : c.substation_distance_km === 0 ? "On or within site" : fmtKm(c.substation_distance_km)}
           missing={c.substation_distance_km === null ? "not available" : undefined} />
-        <MetricRow label={`Mean slope, usable land`} value={terrain !== null ? fmtDeg(terrain) : undefined}
+        <MetricRow label="Mean usable slope" value={terrain !== null ? fmtDeg2(terrain) : undefined}
           missing={terrain === null ? "not available" : undefined} />
         <MetricRow label="Mean / p90 slope, whole site"
           value={c.mean_slope_deg !== null && c.p90_slope_deg !== null ? `${fmtDeg(c.mean_slope_deg)} / ${fmtDeg(c.p90_slope_deg)}` : undefined}

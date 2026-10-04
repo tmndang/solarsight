@@ -57,7 +57,7 @@ export function CandidateFunnel() {
         <Row n={f.baseline} total={f.universe} label="Pass baseline land screen" tip={BASELINE_TIP[set]} />
         <Row n={f.sizeFeasible} total={f.universe} label={`Fit your ${fmtMwShort(res.scenario.targetMwAc)} MW project`}
           tip={`Usable land (slope ≤ ${res.scenario.slopeThresholdPct}% grade, minus buildings, water${res.scenario.excludeNwi ? " and NWI-mapped wetland" : ""}) of at least ${res.requiredAcres.toFixed(1)} acres.`} />
-        {capsOn && <Row n={f.screenEligible} total={f.universe} label="Within your filters" />}
+        {capsOn && <Row n={f.screenEligible} total={f.universe} label="Within your constraints" />}
         <Row n={f.frontier} total={f.universe} label="Pareto frontier" accent="var(--pareto-frontier)"
           glyph={<StatusGlyph state="frontier" />}
           tip="Feasible sites for which no other feasible site is both closer to mapped transmission and flatter on usable land." />

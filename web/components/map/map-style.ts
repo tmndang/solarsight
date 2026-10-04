@@ -149,4 +149,24 @@ export function makeDiamond(): { width: number; height: number; data: Uint8Array
   return { width: s, height: s, data: new Uint8Array(d.data.buffer) };
 }
 
+/** Ⓐ/Ⓑ compare badges: canvas icons (no glyph server needed, so they also work on the offline fallback basemap). */
+export const compareIcon = (slot: "A" | "B") => `ss-compare-${slot}`;
+export function makeCompareBadge(slot: "A" | "B"): { width: number; height: number; data: Uint8Array } {
+  const s = 36; // 18 css px at pixelRatio 2
+  const c = document.createElement("canvas");
+  c.width = c.height = s;
+  const g = c.getContext("2d")!;
+  g.beginPath(); g.arc(s / 2, s / 2, s / 2 - 1, 0, Math.PI * 2); g.fillStyle = "#0e151c"; g.fill();
+  g.beginPath(); g.arc(s / 2, s / 2, s / 2 - 4, 0, Math.PI * 2); g.fillStyle = "#f2f5f7"; g.fill();
+  g.fillStyle = "#0e151c"; g.font = "700 20px system-ui, -apple-system, Segoe UI, sans-serif";
+  g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(slot, s / 2, s / 2 + 1);
+  const d = g.getImageData(0, 0, s, s);
+  return { width: s, height: s, data: new Uint8Array(d.data.buffer) };
+}
+export const COMPARE_LAYER: SymbolLayerSpecification = {
+  id: "cmp-badge", type: "symbol", source: "cmp-pt",
+  layout: { "icon-image": ["concat", "ss-compare-", ["get", "slot"]] as never, "icon-allow-overlap": true,
+    "icon-ignore-placement": true, "icon-anchor": "bottom-left", "icon-offset": [5, -5] },
+};
+
 export const INTERACTIVE_LAYERS =["pt-frontier", "pt-alternative", "pt-feasible", "pt-screened", "poly-fill"];

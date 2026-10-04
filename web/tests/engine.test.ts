@@ -129,7 +129,7 @@ describe("explanations", () => {
     const e = explainDominance("DEQ-08020-04-010", r, byId)!;
     expect(e.dominatorId).toBe("DEQ-02005-98-007");
     expect(e.comparisons.map((c) => c.relation)).toEqual(["better", "better"]);
-    expect(e.comparisons[0].text).toMatch(/^0\.03 km closer to mapped ≥69 kV transmission \(0\.03 km vs 0\.06 km\)$/);
+    expect(e.comparisons[0].text).toBe("0.03 km closer to mapped ≥69 kV transmission (0.03 km vs 0.06 km from site boundary)");
     expect(e.comparisons[1].text).toBe("0.34° flatter on usable land (0.42° vs 0.76°)");
   });
   it("zero-distance tie is still a tie (Pareto unchanged) and is worded as boundary intersection", () => {
@@ -137,13 +137,13 @@ describe("explanations", () => {
     const e = explainDominance("DEQ-08001-04-064", r, byId)!; // Schlage Lock vs WestPoint: both intersect
     expect(e.dominatorId).toBe("DEQ-18035-14-083");
     expect(e.comparisons.map((c) => c.relation)).toEqual(["equal", "better"]);
-    expect(e.comparisons[0].text).toBe("a mapped ≥69 kV line intersecting its boundary, as does this site");
+    expect(e.comparisons[0].text).toBe("tied on transmission: mapped ≥69 kV transmission intersects both site boundaries");
     expect(e.comparisons.some((c) => c.text.includes("0.00 km"))).toBe(false);
   });
-  it("non-zero equal distances keep the 'same distance' wording", () => {
+  it("non-zero equal distances are a tie stated in km", () => {
     const a = { ...props[0], grid_line_distance_km: 0.5, usable_mean_slope_deg_slope10: 1 };
     const c = compareOnObjectives(a, { ...a, usable_mean_slope_deg_slope10: 2 }, ["grid_line_distance_km"]);
-    expect(c[0].text).toBe("the same distance to mapped transmission (both 0.50 km)");
+    expect(c[0].text).toBe("tied on transmission (both 0.50 km from site boundary)");
   });
   it("dominator intersecting vs site at a distance", () => {
     const a = { ...props[0], grid_line_distance_km: 0, usable_mean_slope_deg_slope10: 1 };
@@ -151,7 +151,7 @@ describe("explanations", () => {
     const c = compareOnObjectives(a, b, ["grid_line_distance_km"]);
     expect(c[0].relation).toBe("better");
     expect(c[0].advantage).toBeCloseTo(0.06, 9);
-    expect(c[0].text).toBe("a mapped ≥69 kV line intersecting its boundary (this site: 0.06 km away)");
+    expect(c[0].text).toBe("intersected by mapped ≥69 kV transmission (vs 0.06 km from site boundary)");
   });
   it("tiny differences that round to zero are called 'slightly'", () => {
     const a = { ...props[0], grid_line_distance_km: 0.1, usable_mean_slope_deg_slope10: 1 };
@@ -166,8 +166,8 @@ describe("explanations", () => {
   it("grid distance 0 is a geometric state, never '0.00 km'", () => {
     expect(fmtGridValue(0)).toBe("Intersects site boundary");
     expect(fmtGridPhrase(0)).toBe(GRID_INTERSECTS);
-    expect(GRID_INTERSECTS).toBe("Mapped ≥69 kV line intersects site boundary");
-    expect(fmtGridValue(0.004)).toBe("0.00 km"); // tiny but non-zero is still a distance
+    expect(GRID_INTERSECTS).toBe("Mapped ≥69 kV transmission intersects site boundary");
+    expect(fmtGridValue(0.004)).toBe("< 0.01 km from site boundary"); // tiny but non-zero is still a distance
     expect(fmtGridPhrase(0.03)).toBe("0.03 km to mapped ≥69 kV line");
   });
   it("formatting never invents zeros from rounding semantics", () => {
